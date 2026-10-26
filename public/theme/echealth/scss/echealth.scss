@@ -1,0 +1,248 @@
+// Eastern Cape Department of Health theme tokens and responsive masthead.
+$ec-charcoal: #111111;
+$ec-green: #087c4a;
+$ec-gold: #e5b522;
+$ec-red: #d73527;
+$ec-blue: #20458f;
+$ec-grey: #f5f6f7;
+
+:root {
+    --ec-charcoal: #{$ec-charcoal};
+    --ec-green: #{$ec-green};
+    --ec-gold: #{$ec-gold};
+    --ec-red: #{$ec-red};
+    --ec-blue: #{$ec-blue};
+    --ec-grey: #{$ec-grey};
+    --ec-masthead-height: 136px;
+    --ec-navigation-height: 60px;
+}
+
+body {
+    color: $ec-charcoal;
+    background: #fff;
+}
+
+.echealth-masthead {
+    position: relative;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(17, 17, 17, .12);
+}
+
+body.pagelayout-login .echealth-masthead {
+    position: relative;
+}
+
+body.pagelayout-login #page {
+    margin-top: 1.5rem;
+}
+
+.echealth-government-stripe {
+    height: 5px;
+    background: linear-gradient(90deg,
+        $ec-green 0 25%,
+        $ec-gold 25% 50%,
+        $ec-red 50% 75%,
+        $ec-blue 75% 100%);
+}
+
+.echealth-brand-inner {
+    min-height: 126px;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: .2rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.echealth-brand-mark {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+}
+
+.echealth-brand-mark .icon {
+    display: block;
+    width: 270px !important;
+    height: 123px !important;
+    max-width: none;
+    max-height: none;
+    object-fit: contain;
+}
+
+.echealth-brand-copy {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.35;
+}
+
+.echealth-department-name {
+    color: $ec-charcoal;
+    font-size: .95rem;
+    font-weight: 700;
+}
+
+.echealth-portal-name {
+    color: #41464b;
+    font-size: .9rem;
+}
+
+.navbar.fixed-top {
+    position: static !important;
+    top: auto;
+    border-top: 0;
+    border-bottom-color: #dedfe1;
+}
+
+// Boost positions its side drawers below the standard 60px navbar. This
+// theme adds a taller masthead, so start Moodle drawers below both header rows.
+.drawer.drawer-left,
+.drawer.drawer-right,
+[data-region="right-hand-drawer"].drawer {
+    top: calc(var(--ec-masthead-height) + var(--ec-navigation-height)) !important;
+    height: calc(100vh - var(--ec-masthead-height) - var(--ec-navigation-height)) !important;
+    z-index: 1020;
+}
+
+.drawer-toggles .drawer-toggler {
+    top: calc(var(--ec-masthead-height) + var(--ec-navigation-height) + 1rem) !important;
+}
+
+#page {
+    margin-top: 0;
+}
+
+a,
+.text-primary {
+    color: $ec-blue;
+}
+
+.btn-primary,
+.btn-success {
+    color: #fff;
+    background-color: $ec-green;
+    border-color: $ec-green;
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-success:hover,
+.btn-success:focus {
+    color: #fff;
+    background-color: #06663d;
+    border-color: #06663d;
+}
+
+.card,
+.block {
+    border-color: #e1e4e7;
+    box-shadow: 0 2px 8px rgba(17, 17, 17, .045);
+}
+
+.pagelayout-login .login-container,
+.pagelayout-login .loginform {
+    border-color: #e1e4e7;
+}
+
+.pagelayout-login #page .login-layout-left {
+    background-color: $ec-grey !important;
+    background-image: none !important;
+    color: $ec-charcoal;
+}
+
+.pagelayout-login #page .login-layout-left::after {
+    display: none !important;
+}
+
+.pagelayout-login .echealth-login-introduction {
+    max-width: 560px;
+    margin: 0;
+    padding: 2.25rem;
+    border-left: 5px solid $ec-green;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: 0 2px 12px rgba(17, 17, 17, .08);
+    color: $ec-charcoal;
+    text-align: left;
+}
+
+.echealth-login-kicker {
+    margin-bottom: .5rem;
+    color: $ec-green;
+    font-size: .85rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.echealth-login-introduction h1 {
+    color: $ec-charcoal;
+}
+
+.echealth-login-introduction h2 {
+    margin-top: 1.25rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.echealth-login-introduction p {
+    line-height: 1.6;
+}
+
+.echealth-login-intro {
+    font-size: 1.05rem;
+}
+
+.echealth-portal-purpose {
+    padding-top: 1rem;
+    border-top: 1px solid #dfe3e5;
+    font-size: .9rem;
+}
+
+.echealth-department-link {
+    color: $ec-blue;
+    font-weight: 600;
+}
+
+:focus-visible {
+    outline: 3px solid $ec-blue;
+    outline-offset: 2px;
+}
+
+@media (max-width: 767.98px) {
+    :root {
+        --ec-masthead-height: 102px;
+    }
+
+    .echealth-brand-inner {
+        min-height: 95px;
+        padding: .1rem .75rem;
+        gap: .7rem;
+    }
+
+    .echealth-brand-mark .icon {
+        width: 205px !important;
+        height: 93px !important;
+    }
+
+    .echealth-department-name {
+        font-size: .78rem;
+    }
+
+    .echealth-portal-name {
+        font-size: .75rem;
+    }
+
+    #page {
+        margin-top: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+    }
+}

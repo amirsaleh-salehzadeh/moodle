@@ -1,0 +1,67 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+    Moodle is free software: you can redistribute it and/or modify it under the terms of the GNU GPL v3 or later.
+}}
+{{!
+    @template theme_boost/navbar
+    Eastern Cape Health masthead above Boost's native navigation.
+}}
+<header class="echealth-masthead">
+    <div class="echealth-government-stripe" aria-hidden="true"></div>
+    <div class="echealth-brand-inner container-fluid">
+        <a href="{{{ config.homeurl }}}" class="echealth-brand-mark" aria-label="{{#str}}departmentname, theme_echealth{{/str}}">
+            {{#pix}}ec-health-logo, theme_echealth, {{#str}}departmentname, theme_echealth{{/str}}{{/pix}}
+        </a>
+        <div class="echealth-brand-copy">
+            <strong class="echealth-department-name">{{#str}}departmentname, theme_echealth{{/str}}</strong>
+            <span class="echealth-portal-name">{{#str}}portalname, theme_echealth{{/str}}</span>
+        </div>
+    </div>
+</header>
+
+<nav class="navbar fixed-top bg-body navbar-expand" aria-label="{{#str}}sitemenubar, admin{{/str}}">
+    <div class="container-fluid">
+        <button class="navbar-toggler aabtn d-block d-md-none px-1 my-1 border-0" data-toggler="drawers" data-action="toggle" data-target="theme_boost-drawers-primary">
+            <span class="navbar-toggler-icon"></span>
+            <span class="visually-hidden">{{#str}}sidepanel, core{{/str}}</span>
+        </button>
+
+        {{#primarymoremenu}}
+            <div class="primary-navigation">
+                {{> core/primarymoremenu}}
+            </div>
+        {{/primarymoremenu}}
+
+        {{# output.page_heading_menu}}
+            <ul class="navbar-nav d-none d-md-flex my-1 px-1">
+                {{{ output.page_heading_menu }}}
+            </ul>
+        {{/output.page_heading_menu}}
+
+        <div id="usernavigation" class="navbar-nav ms-auto h-100">
+            {{# output.search_box }}
+                {{{ output.search_box }}}
+            {{/output.search_box}}
+            {{#langmenu}}
+                {{> theme_boost/language_menu }}
+                <div class="divider border-start h-75 align-self-center mx-1"></div>
+            {{/langmenu}}
+            {{# output.colour_mode_menu }}
+                {{{ . }}}
+                <div class="divider border-start h-75 align-self-center mx-1"></div>
+            {{/ output.colour_mode_menu }}
+            {{{ output.edit_switch }}}
+            {{# output.navbar_plugin_output }}
+                {{{ . }}}
+                <div class="divider border-start h-75 align-self-center mx-1"></div>
+            {{/output.navbar_plugin_output}}
+            {{#usermenu}}
+                <div class="d-flex align-items-stretch usermenu-container" data-region="usermenu">
+                    {{> core/user_menu }}
+                </div>
+            {{/usermenu}}
+        </div>
+    </div>
+</nav>
+
+{{> theme_boost/primary-drawer-mobile }}
