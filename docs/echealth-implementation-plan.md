@@ -17,8 +17,8 @@
 
 ## Not implemented or not validated
 
-- Assignment submission and grading workflows are available in the seeded courses, but no sample submissions or marks exist. Quizzes, sample attempts, sample completions, certificates, attendance, calendar entries, announcements, customized role dashboards and management reports have not been seeded or validated.
-- No third-party plugins were installed. Attendance and certificates need a version-specific plugin selection and compatibility review.
+- Assignment submission and grading workflows are available in the seeded courses, but no sample submissions or marks exist. The theme now shows own visible course final grades, scoped completion counts/progress, and awarded badges through Moodle APIs and permissions; there are currently no grade values, completions or badge definitions/awards. Quizzes, sample attempts, Attendance/Custom certificate course activities, calendar events, announcement discussions and management reports have not been seeded or validated. Capability-based student, lecturer and administrator dashboards and calendar/announcement/notification widgets need separate-role populated-data acceptance.
+- Moodle 5.3-compatible Attendance (`mod_attendance`) and Custom certificate (`mod_customcert`) plus certificate elements were installed and upgraded on 27 October 2026. Their course workflows and certificate eligibility remain unconfigured and unvalidated.
 - Keyboard, contrast, mobile/tablet visual QA, learner and educator end-to-end workflow checks and screenshot capture remain outstanding.
 - Moodle's PHP 8.5 support status and the local development server are unsuitable as a production deployment. Configure production hosting with a supported, secured PHP runtime, HTTPS, operational backups and institutional access controls.
 - Moodle alone does not establish POPIA, government security or clinical governance compliance. Admissions, student finance, hospital placement allocation, Persal integration, national regulatory submissions and full campus tenancy remain future LMIS work.

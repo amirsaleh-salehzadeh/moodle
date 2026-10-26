@@ -13,6 +13,33 @@ const focusableSelector = 'a[href], button:not([disabled]), [tabindex]:not([tabi
  * Initialise focus trapping and Escape handling for the Moodle drawer.
  */
 export const init = () => {
+    const accordions = Array.from(document.querySelectorAll('[data-ec-accordion]'));
+    accordions.forEach(details => {
+        const label = details.querySelector(':scope > summary')?.textContent?.trim().replace(/\s+/g, ' ');
+        if (!label) {
+            return;
+        }
+        const key = `theme_echealth_navigation_${details.dataset.ecAccordion}_${label}`;
+        const active = details.querySelector('a[aria-current="page"]') !== null;
+        try {
+            const saved = window.localStorage.getItem(key);
+            if (active) {
+                details.open = true;
+            } else if (saved !== null) {
+                details.open = saved === 'open';
+            }
+        } catch (error) {
+            // Browsers can disable storage; the native disclosure still works.
+        }
+        details.addEventListener('toggle', () => {
+            try {
+                window.localStorage.setItem(key, details.open ? 'open' : 'closed');
+            } catch (error) {
+                // Keep the disclosure usable when storage is unavailable.
+            }
+        });
+    });
+
     const drawer = document.getElementById('theme_boost-drawers-primary');
     const toggle = document.querySelector('[data-target="theme_boost-drawers-primary"][data-action="toggle"]');
     if (!drawer || !toggle) {

@@ -4,7 +4,15 @@ $ec-green: #087c4a;
 $ec-gold: #e5b522;
 $ec-red: #d73527;
 $ec-blue: #20458f;
-$ec-grey: #f5f6f7;
+$ec-grey: #f6f8fa;
+$ec-green-dark: #06623a;
+$ec-background: #f6f8fa;
+$ec-text: #18212b;
+$ec-muted: #667085;
+$ec-border: #e5e8ec;
+$ec-radius-sm: 8px;
+$ec-radius-md: 12px;
+$ec-radius-lg: 16px;
 
 :root {
     --ec-charcoal: #{$ec-charcoal};
@@ -13,6 +21,17 @@ $ec-grey: #f5f6f7;
     --ec-red: #{$ec-red};
     --ec-blue: #{$ec-blue};
     --ec-grey: #{$ec-grey};
+    --ec-green-dark: #{$ec-green-dark};
+    --ec-background: #{$ec-background};
+    --ec-text: #{$ec-text};
+    --ec-muted: #{$ec-muted};
+    --ec-border: #{$ec-border};
+    --ec-sidebar-width: 248px;
+    --ec-header-height: 94px;
+    --ec-radius-sm: #{$ec-radius-sm};
+    --ec-radius-md: #{$ec-radius-md};
+    --ec-radius-lg: #{$ec-radius-lg};
+    --ec-shadow: 0 3px 18px rgba(15, 23, 42, .055);
     --ec-masthead-height: 96px;
     --ec-navigation-height: 60px;
 }
@@ -39,10 +58,10 @@ body.pagelayout-login #page {
 .echealth-government-stripe {
     height: 5px;
     background: linear-gradient(90deg,
-        $ec-green 0 25%,
-        $ec-gold 25% 50%,
-        $ec-red 50% 75%,
-        $ec-blue 75% 100%);
+        $ec-green 0 34%,
+        $ec-gold 34% 54%,
+        $ec-red 54% 78%,
+        $ec-blue 78% 100%);
 }
 
 .echealth-brand-inner {
@@ -117,6 +136,13 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
     max-width: 1400px;
 }
 
+// These two legacy blocks duplicate destinations already supplied by the
+// capability-aware theme menu. Keep them available on all other page types.
+body.pagelayout-mydashboard .block_navigation,
+body.pagelayout-mydashboard .block_settings {
+    display: none;
+}
+
 .primary-navigation .nav-link.active,
 .primary-navigation .nav-link[aria-current="page"] {
     color: $ec-charcoal;
@@ -163,6 +189,24 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
             }
 
             .ec-sidebar-disclosure:not([open]) .ec-navigation {
+                display: none;
+            }
+
+            .ec-sidebar-disclosure:not([open]) > summary {
+                justify-content: center;
+                padding-right: .35rem;
+                padding-left: .35rem;
+                font-size: 0;
+            }
+
+            .ec-sidebar-disclosure:not([open]) > summary::before {
+                width: 1.25rem;
+                height: 1.25rem;
+                background: url("../pix/icons/menu.svg") center / contain no-repeat;
+                content: "";
+            }
+
+            .ec-sidebar-disclosure:not([open]) > summary::after {
                 display: none;
             }
         }
@@ -283,6 +327,50 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
     transform: rotate(180deg);
 }
 
+.ec-nav-subgroup {
+    min-width: 0;
+}
+
+.ec-nav-subgroup > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.ec-nav-subgroup > summary::-webkit-details-marker {
+    display: none;
+}
+
+.ec-nav-subgroup > summary::after {
+    width: .8rem;
+    height: .8rem;
+    flex: 0 0 auto;
+    margin-left: auto;
+    background: url("../pix/icons/chevron-down.svg") center / contain no-repeat;
+    content: "";
+}
+
+.ec-nav-subgroup[open] > summary::after {
+    transform: rotate(180deg);
+}
+
+.ec-nav-summary-content {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: .7rem;
+}
+
+.ec-nav-sublist {
+    gap: .1rem;
+    padding: .2rem 0 .2rem .85rem;
+}
+
+.ec-nav-sublist .ec-nav-link {
+    min-height: 2.4rem;
+    padding: .45rem .55rem;
+    font-size: .91rem;
+}
+
 .ec-admin-group .ec-nav-list {
     padding-top: .35rem;
 }
@@ -340,10 +428,16 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
     box-sizing: border-box;
     width: min(100% - 2rem, 1400px);
     margin: .5rem auto 1.5rem;
-    padding: 1.25rem;
-    border: 1px solid #e1e4e7;
-    border-radius: .75rem;
-    background: #f7f9f8;
+    padding: 1.5rem;
+    border: 1px solid $ec-border;
+    border-radius: $ec-radius-md;
+    background-color: #f4f8f5;
+    background-image: url('../pix/graphics/hero-panel.svg');
+    background-position: right center;
+    background-size: min(52%, 640px) auto;
+    background-repeat: no-repeat;
+    border-left: 4px solid $ec-green;
+    box-shadow: var(--ec-shadow);
 }
 
 .ec-dashboard-eyebrow {
@@ -361,6 +455,13 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
     font-size: clamp(1.4rem, 2.3vw, 2rem);
 }
 
+.ec-dashboard-tagline {
+    max-width: 58rem;
+    margin: 0 0 1rem;
+    color: $ec-muted;
+    font-size: .98rem;
+}
+
 .ec-dashboard-intro {
     margin-bottom: 1.1rem;
     color: #454b50;
@@ -368,7 +469,7 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
 
 .ec-dashboard-stats {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
     gap: .75rem;
     margin-bottom: 1.25rem;
 }
@@ -382,7 +483,7 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
     column-gap: .65rem;
     padding: .8rem 1rem;
     border: 1px solid #e1e4e7;
-    border-radius: .65rem;
+    border-radius: $ec-radius-md;
     background: #fff;
 }
 
@@ -409,11 +510,16 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
     gap: 1.1rem;
 }
 
+.ec-dashboard-main,
+.ec-dashboard-aside {
+    min-width: 0;
+}
+
 .ec-dashboard-section {
     min-width: 0;
     padding: 1rem;
     border: 1px solid #e1e4e7;
-    border-radius: .65rem;
+    border-radius: $ec-radius-md;
     background: #fff;
 }
 
@@ -444,7 +550,7 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
 .ec-course-image {
     display: block;
     width: 100%;
-    aspect-ratio: 16 / 7;
+    aspect-ratio: 16 / 6;
     object-fit: cover;
     background: #f1f3f4;
 }
@@ -464,6 +570,26 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
     font-size: .76rem;
 }
 
+.ec-course-category {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+
+.ec-course-meta-icon,
+.ec-course-action-icon,
+.ec-inline-icon {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 auto;
+    vertical-align: middle;
+}
+
+.ec-event-date .ec-inline-icon,
+.ec-announcement-list .ec-inline-icon {
+    margin-right: .35rem;
+}
+
 .ec-course-title {
     color: $ec-charcoal;
     font-weight: 700;
@@ -481,6 +607,9 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
 }
 
 .ec-course-action {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
     margin-top: auto;
 }
 
@@ -500,7 +629,9 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
 }
 
 .ec-event-list,
-.ec-announcement-list {
+.ec-announcement-list,
+.ec-gradebook-list,
+.ec-badge-list {
     display: grid;
     gap: .7rem;
     margin: 0;
@@ -524,10 +655,65 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
     color: #555d64;
 }
 
+.ec-announcement-date {
+    display: block;
+    margin-left: 1.35rem;
+    color: #555d64;
+    font-size: .76rem;
+    font-weight: 400;
+}
+
+.ec-notification-count {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    color: #454b50;
+}
+
 .ec-event-title,
 .ec-announcement-list a {
     color: $ec-blue;
     font-weight: 650;
+}
+
+.ec-gradebook-list li,
+.ec-badge-list li {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .55rem 0;
+    border-bottom: 1px solid #e8eaec;
+}
+
+.ec-grade-course {
+    flex: 1 1 auto;
+    color: $ec-blue;
+    font-weight: 650;
+}
+
+.ec-grade-value {
+    flex: 0 0 auto;
+    color: $ec-charcoal;
+    font-size: .85rem;
+    font-weight: 700;
+}
+
+.ec-badge-image {
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: 0 0 auto;
+    object-fit: contain;
+}
+
+.ec-badge-title {
+    flex: 1 1 auto;
+    color: $ec-blue;
+    font-weight: 650;
+}
+
+.ec-badge-date {
+    color: #555d64;
+    font-size: .76rem;
 }
 
 .ec-empty-state {
@@ -544,6 +730,58 @@ body.pagelayout-mydashboard #page.drawers .footer-popover {
 .ec-empty-icon {
     width: 1.6rem;
     height: 1.6rem;
+}
+
+.ec-quick-actions {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid $ec-border;
+    border-radius: $ec-radius-md;
+    background: #fff;
+}
+
+.ec-quick-actions h3 {
+    margin: 0 0 .75rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.ec-quick-action-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: .6rem;
+}
+
+.ec-quick-action {
+    display: flex;
+    min-height: 3.25rem;
+    align-items: center;
+    gap: .65rem;
+    padding: .7rem .85rem;
+    border: 1px solid $ec-border;
+    border-radius: $ec-radius-sm;
+    color: $ec-green-dark;
+    background: var(--ec-background);
+    font-size: .88rem;
+    font-weight: 650;
+    text-decoration: none;
+}
+
+.ec-quick-action:hover,
+.ec-quick-action:focus-visible {
+    color: $ec-green-dark;
+    background: #eaf4ef;
+    text-decoration: underline;
+}
+
+.ec-quick-action-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex: 0 0 auto;
+}
+
+.ec-nav-link.is-active .ec-nav-icon {
+    filter: brightness(0) invert(1);
 }
 
 @media (max-width: 1099.98px) {

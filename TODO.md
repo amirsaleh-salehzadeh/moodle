@@ -8,7 +8,7 @@ Turn the existing Moodle 5.3+ local proof of concept into a credible, safe, prof
 
 - **Verified present:** Moodle 5.3+ (branch 503), local site returns HTTP 200 at `http://localhost:8080`; `theme_echealth` is configured as active and inherits Boost. The logo asset, masthead, four-colour stripe, palette, responsive rules, focus styles, department text and demo disclaimer exist. Public catalogue/front page is configured.
 - **Verified records:** 6 campus-labelled categories and cohorts; 36 campus course offerings (six titles repeated across six demo campuses); 30 fictional learners, six educators, two training administrators and one training manager plus Moodle's original admin/guest accounts (41 non-deleted users); 216 enrolments; 36 core Assignments and 36 core Pages; 108 course modules total; 72 grade items. Accounts and all learning content are synthetic. These are record/configuration checks, not workflow acceptance.
-- **Verified missing:** 0 quiz records, 0 grade records, 0 course completion records; no `attendance`, `certificate` or `customcert` tables/plugins. No sample assignment submissions/marks, completion evidence, certificates, attendance, event/announcement data or dedicated management report views are evidenced in the existing project notes.
+- **Verified missing:** 0 quiz records, 0 grade values, 0 completed-course records and 0 issued badges. No sample assignment submissions/marks, completion evidence, attendance sessions, event/announcement data or dedicated management report views are evidenced. Moodle 5.3-compatible Attendance and Custom certificate plus badge extension elements were installed/updated on 27 October 2026; their activities remain unconfigured.
 - **Important mismatch:** current catalogue is Foundations of Nursing Practice, Anatomy and Physiology for Nursing, Community and Primary Health Care, Maternal and Child Health, Medical-Surgical Nursing, and Clinical Skills: Patient Observation. Requested demonstration catalogue adds Infection Prevention and Control and Emergency Nursing and Basic Life Support; those must be reconciled into the six-course plan. No infection control flagship exists yet.
 - **Runtime risk:** `C:\xampp8.5\php\php.exe` reports PHP 8.5.12. Existing local installation notes say Moodle 5.3 requires PHP 8.3+ and treats PHP 8.5 support as in development. Local dev server/runtime is not production-ready evidence.
 - **Proposal/reference gap:** no attached proposal or separate branding reference was present in the accessible project files. Existing logo is present; institutional naming/official-campus assertions and proposal clause mappings remain **Needs verification**. Six campus names are explicitly fictional demo placeholders, not verified institutions.
@@ -24,7 +24,7 @@ Only baseline artifacts/configuration listed above are marked verified-present; 
 2. Build and validate the flagship Infection Prevention and Control learning journey; it currently has no course record among the six seeded titles.
 3. Create quiz, question bank, submissions, grading, progress and completion evidence, then execute both learner and educator journeys.
 4. Confirm six demo campus labels with stakeholders or keep them clearly fictional; categories/cohorts do not provide tenant isolation.
-5. Select/verify version-compatible attendance and certificate plugins only if needed for the demonstration; none are installed.
+5. Configure and validate the installed Attendance and Custom certificate activities only if needed for the demonstration; no activities or certificates have been created.
 6. Resolve supported PHP runtime, HTTPS, backups, operational controls and privacy/security review before any production claim.
 
 ### Effort summary
@@ -200,7 +200,7 @@ Go only when the site is reachable on the chosen demo host, demo accounts work, 
 - **Status:** Partial
 - **Workstream:** Assessment
 - **Description:** Use Moodle core Quiz, Assignment, rubric and gradebook; separate native capability from configured evidence.
-- **Existing state:** Core Quiz and Assignment installed; 36 Assignments and 72 grade items exist; 0 quiz records and 0 grade records. Rubric use and completion criteria unverified.
+- **Existing state:** Core Quiz and Assignment installed; 36 Assignments and 72 grade items exist; 0 quiz records and 0 grade values. Theme now exposes the learner's own visible final grades, scoped completion counts/progress and awarded badges through Moodle APIs and capabilities. Badge issuing is enabled at site level but no badge definitions/awards exist. Rubric use and completion criteria remain unverified.
 - **Implementation steps:**
   - [x] Confirm core Quiz, Assignment and gradebook components are present in source/database.
   - [ ] Set quiz attempt/retake, time, review and pass threshold with course owner.
@@ -222,10 +222,10 @@ Go only when the site is reachable on the chosen demo host, demo accounts work, 
 - **Status:** Not started
 - **Workstream:** Plugins
 - **Description:** Decide if these capabilities are necessary for demo; if so, select plugins compatible with exact Moodle/PHP target and maintained security posture.
-- **Existing state:** No attendance/certificate plugin tables/components detected. Core badges exist but are not equivalent to a downloadable certificate or attendance register.
+- **Existing state:** Moodle 5.3-compatible Attendance and Custom certificate plugins are installed and upgraded; their course activities remain unconfigured. Core badges are enabled but are not equivalent to a downloadable certificate or attendance register.
 - **Implementation steps:**
   - [ ] Compare current supported plugin releases to target Moodle branch, PHP, DB, licensing, accessibility, maintenance and backup/restore requirements.
-  - [ ] Do not install plugins in planning; test candidate only in disposable staging after approval.
+  - [ ] Review the installed plugin versions against the target deployment runtime and test in disposable staging before any production use.
   - [ ] Configure sample session and lecturer attendance entry; verify learner visibility and supported export.
   - [ ] Configure certificate template and eligibility linked to completion; test download, name and issue timing.
   - [ ] Document native alternative/manual fallback and plugin limitations.
@@ -234,7 +234,7 @@ Go only when the site is reachable on the chosen demo host, demo accounts work, 
 - **Estimated effort:** 2–4 d, conditional.
 - **Acceptance criteria:** Feature omitted from demo unless plugin passes compatibility, permission, export and restore checks; any certificate issued only after verified completion.
 - **Verification:** Compatibility report and role-based session/certificate walkthrough in staging.
-- **Evidence:** Attendance/certificate DB tables unavailable; no third-party plugins documented.
+- **Evidence:** Installed plugin code under `public/mod/attendance` and `public/mod/customcert`; database upgrade completed 27 October 2026; no sample activities/workflows.
 - **Risk:** High.
 
 ### Workstream 9 — Demonstration users and data
@@ -477,7 +477,13 @@ There are **19 master tasks** in this plan: **12 P0**, **7 P1**, **1 blocked** (
 
 - [x] Implemented the child-theme navigation and dashboard in `public/theme/echealth/`, preserving Moodle core, Boost, the existing logo, and native course pages.
 - [x] Added capability-aware administration links, real account/course/calendar/announcement data, honest empty states, responsive course cards, supplied local SVG/WebP assets, configurable portal branding, and keyboard-aware Boost drawer handling.
-- [x] Purged Moodle caches, visually checked the authenticated desktop dashboard, linted theme PHP and parsed the AMD JavaScript source/build.
+- [x] Matched the kit's masthead stripe, portal descriptor, hero graphic, visual tokens, card proportions, and semantic dashboard action/activity icons. Sample numbers and dates remain live-data driven.
+- [x] Added real catalogue discovery cards when a user has no course enrolments, so the dashboard remains useful and can show matching kit thumbnails without inventing enrolment/progress.
+- [x] Completed remaining navigation destinations: authenticated Site home, course-scoped Enrolments and Grades, optional capability-checked Certificate/Attendance activities, category-scoped course management links, and a single Administration group.
+- [x] Added coordinator-specific welcome copy and a live Assignment API pending-grading count for users who can grade.
+- [x] Re-purged Moodle caches after the latest navigation changes.
+- [ ] Visually confirm the latest no-enrolment catalogue cards, optional plugin links, and role-specific dashboard states; the current browser session has not been captured after these changes.
+- [x] Linted theme PHP and parsed the AMD JavaScript source/build.
 - [x] Updated `docs/NAVIGATION_UI_QA.md` with evidence and remaining acceptance checks.
 - [ ] Role-specific student/lecturer/coordinator checks, data-rich scenarios, mobile/responsive screenshots and full assistive-technology QA still require a suitable test account/device/data.
 

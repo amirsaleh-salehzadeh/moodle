@@ -18,6 +18,8 @@ defined('MOODLE_INTERNAL') || die();
 class core_renderer extends \theme_boost\output\core_renderer {
     /** @var string|null Cached sidebar markup for this request. */
     private ?string $echealthnavigation = null;
+    /** @var bool|null Cached category-scoped course management capability. */
+    private ?bool $echealthcanmanagecourses = null;
 
     /**
      * Return the supplied logo, allowing a site administrator to replace it from theme settings.
@@ -42,7 +44,8 @@ class core_renderer extends \theme_boost\output\core_renderer {
      * @return string
      */
     public function echealth_department_name(): string {
-        return format_string(get_config('theme_echealth', 'departmentname') ?: get_string('departmentname', 'theme_echealth'));
+        return format_string(get_config('theme_echealth', 'departmentname') ?: get_string('departmentname', 'theme_echealth'),
+            true, ['context' => \context_system::instance(), 'escape' => false]);
     }
 
     /**
@@ -51,7 +54,12 @@ class core_renderer extends \theme_boost\output\core_renderer {
      * @return string
      */
     public function echealth_portal_name(): string {
-        return format_string(get_config('theme_echealth', 'portalname') ?: get_string('portalname', 'theme_echealth'));
+        $name = get_config('theme_echealth', 'portalname');
+        // Replace the previous theme default while keeping any site-specific label intact.
+        if (empty($name) || $name === 'Department of Health LMS Portal') {
+            $name = get_string('portalname', 'theme_echealth');
+        }
+        return format_string($name, true, ['context' => \context_system::instance(), 'escape' => false]);
     }
 
     /**
@@ -70,22 +78,67 @@ class core_renderer extends \theme_boost\output\core_renderer {
         $systemcontext = \context_system::instance();
         $path = $this->page->url->get_path();
         $primary = [];
-        $administration = [];
+        $teaching = [];
+        $learners = [];
+        $management = [];
+        $system = [];
         $support = [];
+        $enrolledcourses = [];
+        $coursemodules = [];
+        $certificatecm = null;
+        $optionalmodules = \core_component::get_plugin_list('mod');
 
         if (!isloggedin() || isguestuser()) {
             $this->add_echealth_nav_item($primary, 'sitehome', new \moodle_url('/'), 'home', $path === '/');
             $this->add_echealth_nav_item($primary, 'catalogue', new \moodle_url('/course/index.php'), 'catalogue', $path === '/course/index.php');
         } else {
+            $enrolledcourses = enrol_get_my_courses('id, fullname, shortname', 'sortorder ASC', 30);
+            // Only inspect course modules when optional navigation destinations are installed.
+            if (isset($optionalmodules['customcert']) || isset($optionalmodules['attendance']) || isset($optionalmodules['forum'])) {
+                foreach ($enrolledcourses as $course) {
+                    $modinfo = get_fast_modinfo($course);
+                    foreach ($modinfo->get_cms() as $cm) {
+                        if (!$cm->uservisible || !isset($optionalmodules[$cm->modname])) {
+                            continue;
+                        }
+                        $coursemodules[$course->id][] = $cm;
+                        if ($cm->modname === 'customcert' && has_capability('mod/customcert:view', \context_module::instance($cm->id))) {
+                            $iscurrentcertificate = $path === '/mod/customcert/view.php' &&
+                                (int)$this->page->url->get_param('id') === (int)$cm->id;
+                            if ($certificatecm === null || $iscurrentcertificate) {
+                                $certificatecm = $cm;
+                            }
+                        }
+                    }
+                }
+            }
+            if ($certificatecm) {
+                $certificateurl = new \moodle_url('/mod/customcert/view.php', ['id' => $certificatecm->id]);
+                $this->add_echealth_nav_item($primary, 'certificates', $certificateurl, 'certificate',
+                    $path === '/mod/customcert/view.php' && (int)$this->page->url->get_param('id') === (int)$certificatecm->id);
+            }
             if (!isset($CFG->enabledashboard) || $CFG->enabledashboard) {
                 $this->add_echealth_nav_item($primary, 'dashboard', new \moodle_url('/my/'), 'dashboard', in_array($path, ['/my/', '/my/index.php'], true));
             }
-            if (!empty($CFG->enablemycourses) && file_exists($CFG->dirroot . '/my/courses.php')) {
+            $this->add_echealth_nav_item($primary, 'sitehome', new \moodle_url('/'), 'home', $path === '/');
+            if (file_exists($CFG->dirroot . '/my/courses.php')) {
                 $this->add_echealth_nav_item($primary, 'mycourses', new \moodle_url('/my/courses.php'), 'courses', $path === '/my/courses.php');
             }
-            $this->add_echealth_nav_item($primary, 'sitehome', new \moodle_url('/'), 'home', $path === '/');
+            if (!empty($CFG->enableglobalsearch) && file_exists($CFG->dirroot . '/search/index.php')) {
+                $this->add_echealth_nav_item($primary, 'search', new \moodle_url('/search/index.php'), 'search', str_starts_with($path, '/search/'));
+            }
             $this->add_echealth_nav_item($primary, 'catalogue', new \moodle_url('/course/index.php'), 'catalogue', $path === '/course/index.php');
-            $this->add_echealth_nav_item($primary, 'calendar', new \moodle_url('/calendar/view.php'), 'calendar', $path === '/calendar/view.php');
+            $this->add_echealth_nav_item($primary, 'calendar', new \moodle_url('/calendar/view.php'), 'calendar', str_starts_with($path, '/calendar/'));
+            if (file_exists($CFG->dirroot . '/message/output/popup/notifications.php')) {
+                $this->add_echealth_nav_item($primary, 'viewnotifications',
+                    new \moodle_url('/message/output/popup/notifications.php'), 'bell',
+                    str_starts_with($path, '/message/output/popup/'));
+            }
+            if (!empty($CFG->enablebadges) && file_exists($CFG->dirroot . '/badges/mybadges.php') &&
+                    has_capability('moodle/badges:manageownbadges', \context_user::instance($USER->id))) {
+                $this->add_echealth_nav_item($primary, 'mybadges', new \moodle_url('/badges/mybadges.php'), 'award',
+                    $path === '/badges/mybadges.php');
+            }
 
             $announcement = $this->get_site_announcement_module();
             if ($announcement) {
@@ -105,22 +158,19 @@ class core_renderer extends \theme_boost\output\core_renderer {
                 has_capability('moodle/user:create', $systemcontext) ||
                 has_capability('moodle/user:update', $systemcontext)
             )) {
-                $this->add_echealth_nav_item($administration, 'users', new \moodle_url('/admin/user.php'), 'users', $path === '/admin/user.php');
+                $this->add_echealth_nav_item($learners, 'users', new \moodle_url('/admin/user.php'), 'users', $path === '/admin/user.php');
             }
-            if (file_exists($CFG->dirroot . '/course/management.php') && (
-                has_capability('moodle/course:create', $systemcontext) ||
-                has_capability('moodle/category:manage', $systemcontext)
-            )) {
-                $this->add_echealth_nav_item($administration, 'coursesadmin', new \moodle_url('/course/management.php'), 'book', $path === '/course/management.php');
+            if (file_exists($CFG->dirroot . '/course/management.php') && $this->echealth_can_manage_courses()) {
+                $this->add_echealth_nav_item($learners, 'coursesadmin', new \moodle_url('/course/management.php'), 'book', $path === '/course/management.php');
             }
             if (file_exists($CFG->dirroot . '/cohort/index.php') &&
                     has_capability('moodle/cohort:manage', $systemcontext)) {
-                $this->add_echealth_nav_item($administration, 'cohorts', new \moodle_url('/cohort/index.php'), 'campus', $path === '/cohort/index.php');
+                $this->add_echealth_nav_item($learners, 'cohorts', new \moodle_url('/cohort/index.php'), 'campus', $path === '/cohort/index.php');
             }
             if (file_exists($CFG->dirroot . '/admin/tool/lp/competencies.php') &&
                     has_capability('tool/lp:competencymanage', $systemcontext)) {
                 $this->add_echealth_nav_item(
-                    $administration,
+                    $learners,
                     'competencies',
                     new \moodle_url('/admin/tool/lp/competencies.php'),
                     'competency',
@@ -129,12 +179,12 @@ class core_renderer extends \theme_boost\output\core_renderer {
             }
             if (file_exists($CFG->dirroot . '/reportbuilder/index.php') &&
                     has_capability('moodle/site:config', $systemcontext)) {
-                $this->add_echealth_nav_item($administration, 'reports', new \moodle_url('/reportbuilder/index.php'), 'reports', str_starts_with($path, '/reportbuilder/'));
+                $this->add_echealth_nav_item($management, 'reports', new \moodle_url('/reportbuilder/index.php'), 'reports', str_starts_with($path, '/reportbuilder/'));
             } else if (file_exists($CFG->dirroot . '/report/log/index.php')) {
-                foreach (enrol_get_my_courses('id', 'sortorder ASC', 6) as $course) {
+                foreach (array_slice($enrolledcourses, 0, 6) as $course) {
                     if (has_capability('moodle/site:viewreports', \context_course::instance($course->id))) {
                         $this->add_echealth_nav_item(
-                            $administration,
+                            $management,
                             'reports',
                             new \moodle_url('/report/log/index.php', ['id' => $course->id]),
                             'reports',
@@ -144,15 +194,118 @@ class core_renderer extends \theme_boost\output\core_renderer {
                     }
                 }
             }
-            if (file_exists($CFG->dirroot . '/' . $CFG->admin . '/index.php') &&
-                    has_capability('moodle/site:config', $systemcontext)) {
-                $this->add_echealth_nav_item(
-                    $administration,
-                    'siteadministration',
-                    new \moodle_url('/' . $CFG->admin . '/index.php'),
-                    'settings',
-                    str_starts_with($path, '/' . $CFG->admin . '/')
-                );
+            // Course activities in Moodle require a course context. Build the submenu
+            // from courses this user can access instead of inventing global destinations.
+            $courseitems = [];
+            $courses = $enrolledcourses;
+            $currentcourseid = $this->page->course->id ?? 0;
+            usort($courses, static function($a, $b) use ($currentcourseid) {
+                return ((int)$b->id === (int)$currentcourseid) <=> ((int)$a->id === (int)$currentcourseid);
+            });
+            foreach ($courses as $course) {
+                if ((int)$course->id === SITEID) {
+                    continue;
+                }
+                $coursecontext = \context_course::instance($course->id);
+                $activities = [];
+                $courseurl = new \moodle_url('/course/view.php', ['id' => $course->id]);
+                $this->add_echealth_nav_item($activities, 'opencourse', $courseurl, 'book-open',
+                    $path === '/course/view.php' && (int)$this->page->url->get_param('id') === (int)$course->id);
+
+                if (file_exists($CFG->dirroot . '/mod/assign/index.php') && (
+                    has_capability('mod/assign:submit', $coursecontext) || has_capability('mod/assign:grade', $coursecontext)
+                )) {
+                    $this->add_echealth_nav_item($activities, 'assignments', new \moodle_url('/mod/assign/index.php', ['id' => $course->id]),
+                        'clipboard', str_starts_with($path, '/mod/assign/') && (int)$this->page->url->get_param('id') === (int)$course->id);
+                }
+                if (file_exists($CFG->dirroot . '/mod/quiz/index.php') && (
+                    has_capability('mod/quiz:attempt', $coursecontext) || has_capability('mod/quiz:viewreports', $coursecontext)
+                )) {
+                    $this->add_echealth_nav_item($activities, 'examsquizzes', new \moodle_url('/mod/quiz/index.php', ['id' => $course->id]),
+                        'quiz', str_starts_with($path, '/mod/quiz/') && (int)$this->page->url->get_param('id') === (int)$course->id);
+                }
+                if (!empty($course->showgrades) && file_exists($CFG->dirroot . '/grade/report/user/index.php') &&
+                        has_capability('moodle/grade:view', $coursecontext)) {
+                    $this->add_echealth_nav_item($activities, 'gradebook',
+                        new \moodle_url('/grade/report/user/index.php', ['id' => $course->id]), 'grades',
+                        str_starts_with($path, '/grade/report/') && (int)$this->page->url->get_param('id') === (int)$course->id);
+                } else if (file_exists($CFG->dirroot . '/grade/report/index.php') &&
+                        has_capability('moodle/grade:viewall', $coursecontext)) {
+                    $this->add_echealth_nav_item($activities, 'gradebook',
+                        new \moodle_url('/grade/report/index.php', ['id' => $course->id]), 'grades',
+                        str_starts_with($path, '/grade/report/') && (int)$this->page->url->get_param('id') === (int)$course->id);
+                }
+                if (!empty($course->enablecompletion) && file_exists($CFG->dirroot . '/report/completion/index.php') &&
+                        has_capability('report/completion:view', $coursecontext)) {
+                    $this->add_echealth_nav_item($activities, 'completionreport',
+                        new \moodle_url('/report/completion/index.php', ['course' => $course->id]), 'completion',
+                        $path === '/report/completion/index.php' && (int)$this->page->url->get_param('course') === (int)$course->id);
+                }
+                if (file_exists($CFG->dirroot . '/question/banks.php') && has_capability('moodle/question:managecategory', $coursecontext)) {
+                    $this->add_echealth_nav_item($activities, 'questionbank', new \moodle_url('/question/banks.php', ['courseid' => $course->id]),
+                        'file-text', str_starts_with($path, '/question/') && (int)$this->page->url->get_param('courseid') === (int)$course->id);
+                }
+                if (file_exists($CFG->dirroot . '/enrol/instances.php') && has_capability('moodle/course:enrolreview', $coursecontext)) {
+                    $this->add_echealth_nav_item($activities, 'enrolments', new \moodle_url('/enrol/instances.php', ['id' => $course->id]),
+                        'enrolment', $path === '/enrol/instances.php' && (int)$this->page->url->get_param('id') === (int)$course->id);
+                }
+                foreach ($coursemodules[$course->id] ?? [] as $cm) {
+                    $forum = $cm->modname === 'forum' ? $DB->get_record('forum', ['id' => $cm->instance], 'id, type', IGNORE_MISSING) : false;
+                    if ($forum && $forum->type === 'news' && has_capability('mod/forum:viewdiscussion', \context_module::instance($cm->id))) {
+                        $this->add_echealth_nav_item($activities, 'announcements',
+                            new \moodle_url('/mod/forum/view.php', ['id' => $cm->id]), 'announcement',
+                            $path === '/mod/forum/view.php' && (int)$this->page->url->get_param('id') === (int)$cm->id);
+                    }
+                }
+                if (isset($optionalmodules['attendance'])) {
+                    foreach ($coursemodules[$course->id] ?? [] as $cm) {
+                        if ($cm->modname === 'attendance' && has_capability('mod/attendance:view', \context_module::instance($cm->id))) {
+                            $this->add_echealth_nav_item($activities, 'attendance',
+                                new \moodle_url('/mod/attendance/view.php', ['id' => $cm->id]), 'attendance',
+                                $path === '/mod/attendance/view.php' && (int)$this->page->url->get_param('id') === (int)$cm->id);
+                        }
+                    }
+                }
+                if (count($activities) > 1) {
+                $courseitems[] = ['label' => format_string($course->fullname), 'url' => $courseurl->out(false),
+                        'icon' => $this->image_url('icons/book', 'theme_echealth')->out(false),
+                        'active' => $path === '/course/view.php' && (int)$this->page->url->get_param('id') === (int)$course->id,
+                    'children' => $activities];
+                }
+            }
+            if ($courseitems) {
+                $teaching[] = ['label' => get_string('courseactivities', 'theme_echealth'), 'url' => '',
+                    'icon' => $this->image_url('icons/graduation-cap', 'theme_echealth')->out(false),
+                    'active' => false, 'children' => $courseitems];
+            }
+
+            if (file_exists($CFG->dirroot . '/' . $CFG->admin . '/index.php') && has_capability('moodle/site:config', $systemcontext)) {
+                $adminurl = new \moodle_url('/' . $CFG->admin . '/index.php');
+                $adminchildren = [];
+                $this->add_echealth_nav_item($adminchildren, 'siteadministration', $adminurl, 'settings',
+                    str_starts_with($path, '/' . $CFG->admin . '/'));
+                foreach ([
+                    ['roles', '/admin/roles/manage.php', 'users'],
+                    ['authentication', '/admin/auth.php', 'lock'],
+                    ['plugins', '/admin/modules.php', 'settings'],
+                    ['scheduledtasks', '/admin/tool/task/scheduledtasks.php', 'clock'],
+                ] as [$label, $route, $icon]) {
+                    if (file_exists($CFG->dirroot . $route)) {
+                        $this->add_echealth_nav_item($adminchildren, $label, new \moodle_url($route), $icon, $path === $route);
+                    }
+                }
+                if (!empty($CFG->enablebadges) && file_exists($CFG->dirroot . '/badges/index.php')) {
+                    require_once($CFG->libdir . '/badgeslib.php');
+                    if (badges_can_manage_badges($systemcontext)) {
+                        $this->add_echealth_nav_item($adminchildren, 'managebadges',
+                            new \moodle_url('/badges/index.php', ['type' => BADGE_TYPE_SITE]), 'award',
+                            $path === '/badges/index.php');
+                    }
+                }
+                $system[] = ['label' => get_string('siteadministration', 'theme_echealth'), 'url' => $adminurl->out(false),
+                    'icon' => $this->image_url('icons/settings', 'theme_echealth')->out(false),
+                    'active' => str_starts_with($path, '/' . $CFG->admin . '/') || str_starts_with($path, '/admin/'),
+                    'children' => $adminchildren];
             }
         }
 
@@ -167,6 +320,10 @@ class core_renderer extends \theme_boost\output\core_renderer {
 
         $html = \html_writer::start_tag('nav', ['class' => 'ec-navigation', 'aria-label' => get_string('primarynavigation', 'theme_echealth')]);
         $html .= $this->render_echealth_nav_group('learning', $primary);
+        if ($teaching) {
+            $html .= $this->render_echealth_nav_group('teachingassessments', $teaching, true);
+        }
+        $administration = array_merge($learners, $management, $system);
         if ($administration) {
             $html .= $this->render_echealth_nav_group('administration', $administration, true);
         }
@@ -208,14 +365,16 @@ class core_renderer extends \theme_boost\output\core_renderer {
             return '';
         }
         if ($collapsible) {
-            $html = \html_writer::start_tag('details', ['class' => 'ec-nav-group ec-admin-group']);
+            $html = \html_writer::start_tag('details', ['class' => 'ec-nav-group ec-admin-group', 'data-ec-accordion' => 'group']);
             $html .= \html_writer::tag('summary', get_string($titlekey, 'theme_echealth'), ['class' => 'ec-nav-heading']);
         } else {
             $html = \html_writer::start_tag('section', ['class' => 'ec-nav-group']);
             $html .= \html_writer::tag('h2', get_string($titlekey, 'theme_echealth'), ['class' => 'ec-nav-heading']);
         }
         $html .= \html_writer::start_tag('ul', ['class' => 'ec-nav-list']);
+        $hasactive = false;
         foreach ($items as $item) {
+            $hasactive = $hasactive || !empty($item['active']) || $this->echealth_nav_children_active($item['children'] ?? []);
             $attributes = [
                 'href' => $item['url'],
                 'class' => 'ec-nav-link' . ($item['active'] ? ' is-active' : ''),
@@ -230,10 +389,64 @@ class core_renderer extends \theme_boost\output\core_renderer {
                 'class' => 'ec-nav-icon',
             ]);
             $content = $icon . \html_writer::tag('span', $item['label'], ['class' => 'ec-nav-label']);
-            $html .= \html_writer::tag('li', \html_writer::tag('a', $content, $attributes));
+            if (!empty($item['children'])) {
+                $html .= \html_writer::start_tag('li', ['class' => 'ec-nav-parent']);
+                $html .= \html_writer::start_tag('details', ['class' => 'ec-nav-subgroup', 'data-ec-accordion' => 'submenu',
+                    'open' => (!empty($item['active']) || $this->echealth_nav_children_active($item['children'])) ? 'open' : null]);
+                $summary = \html_writer::tag('span', $content, ['class' => 'ec-nav-summary-content']);
+                $html .= \html_writer::tag('summary', $summary, ['class' => 'ec-nav-link']);
+                $html .= $this->render_echealth_nav_items($item['children']);
+                $html .= \html_writer::end_tag('details') . \html_writer::end_tag('li');
+            } else {
+                $html .= \html_writer::tag('li', \html_writer::tag('a', $content, $attributes));
+            }
         }
-        $html .= \html_writer::end_tag('ul') . \html_writer::end_tag($collapsible ? 'details' : 'section');
+        $html .= \html_writer::end_tag('ul');
+        if ($collapsible && $hasactive) {
+            // A native details element must have its open attribute at creation.
+            $html = str_replace('<details class="ec-nav-group ec-admin-group" data-ec-accordion="group">',
+                '<details class="ec-nav-group ec-admin-group" data-ec-accordion="group" open>', $html);
+        }
+        $html .= \html_writer::end_tag($collapsible ? 'details' : 'section');
         return $html;
+    }
+
+    /**
+     * Render a nested list of capability-filtered navigation items.
+     * @param array $items
+     * @return string
+     */
+    private function render_echealth_nav_items(array $items): string {
+        $html = \html_writer::start_tag('ul', ['class' => 'ec-nav-list ec-nav-sublist']);
+        foreach ($items as $item) {
+            $icon = \html_writer::empty_tag('img', ['src' => $item['icon'], 'alt' => '', 'aria-hidden' => 'true', 'class' => 'ec-nav-icon']);
+            $attributes = ['href' => $item['url'], 'class' => 'ec-nav-link' . (!empty($item['active']) ? ' is-active' : '')];
+            if (!empty($item['active'])) {
+                $attributes['aria-current'] = 'page';
+            }
+            $content = $icon . \html_writer::tag('span', $item['label'], ['class' => 'ec-nav-label']);
+            if (!empty($item['children'])) {
+                $html .= \html_writer::start_tag('li', ['class' => 'ec-nav-parent']);
+                $html .= \html_writer::start_tag('details', ['class' => 'ec-nav-subgroup', 'data-ec-accordion' => 'submenu',
+                    'open' => (!empty($item['active']) || $this->echealth_nav_children_active($item['children'])) ? 'open' : null]);
+                $html .= \html_writer::tag('summary', \html_writer::tag('span', $content, ['class' => 'ec-nav-summary-content']), ['class' => 'ec-nav-link']);
+                $html .= $this->render_echealth_nav_items($item['children']);
+                $html .= \html_writer::end_tag('details') . \html_writer::end_tag('li');
+            } else {
+                $html .= \html_writer::tag('li', \html_writer::tag('a', $content, $attributes));
+            }
+        }
+        return $html . \html_writer::end_tag('ul');
+    }
+
+    /** @param array $items @return bool */
+    private function echealth_nav_children_active(array $items): bool {
+        foreach ($items as $item) {
+            if (!empty($item['active']) || $this->echealth_nav_children_active($item['children'] ?? [])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -300,18 +513,41 @@ class core_renderer extends \theme_boost\output\core_renderer {
         global $CFG, $DB, $USER;
 
         $courses = enrol_get_my_courses(
-            'id, fullname, shortname, summary, category, startdate, enddate, enablecompletion, cacherev',
+            'id, fullname, shortname, summary, category, startdate, enddate, enablecompletion, showgrades, cacherev',
             'sortorder ASC'
         );
         $coursecount = count($courses);
-        $completedcount = $DB->count_records_select(
-            'course_completions',
-            'userid = :userid AND timecompleted > 0',
-            ['userid' => $USER->id]
-        );
-        $coursecards = $this->echealth_course_cards(array_slice($courses, 0, 6));
+        $dashboardrole = $this->echealth_dashboard_role($courses);
+        $completioncourseids = [];
+        foreach ($courses as $course) {
+            if (!empty($course->enablecompletion)) {
+                $completioncourseids[] = (int)$course->id;
+            }
+        }
+        $completedcount = 0;
+        if ($completioncourseids) {
+            [$completioncoursesql, $completionparams] = $DB->get_in_or_equal(
+                $completioncourseids, SQL_PARAMS_NAMED, 'completioncourse');
+            $completionparams['userid'] = (int)$USER->id;
+            $completedcount = $DB->count_records_select(
+                'course_completions',
+                'userid = :userid AND timecompleted > 0 AND course ' . $completioncoursesql,
+                $completionparams
+            );
+        }
+        $pendinggrading = $this->echealth_pending_grading_count(array_slice($courses, 0, 30));
+        $badges = $this->echealth_user_badges();
+        $dashboardcourses = $dashboardrole === 'lecturer'
+            ? array_values(array_filter($courses, function($course) {
+                $context = \context_course::instance($course->id);
+                return has_capability('moodle/course:update', $context) || has_capability('mod/assign:grade', $context);
+            })) : $courses;
+        $staffdashboard = $dashboardrole === 'lecturer';
+        $coursecards = $this->echealth_course_cards(array_slice($dashboardcourses, 0, 6), !$staffdashboard, !$staffdashboard);
+        $cataloguecards = $coursecards ? [] : $this->echealth_course_cards($this->echealth_catalogue_courses(), false);
         $upcoming = $this->echealth_upcoming_events($courses);
-        $announcements = $this->echealth_announcements();
+        $announcements = $this->echealth_announcements($courses);
+        $notifications = $this->echealth_notifications();
 
         $html = \html_writer::start_tag('section', [
             'class' => 'ec-dashboard-panel',
@@ -319,32 +555,64 @@ class core_renderer extends \theme_boost\output\core_renderer {
         ]);
         $html .= \html_writer::tag('p', get_string('dashboardeyebrow', 'theme_echealth'), ['class' => 'ec-dashboard-eyebrow']);
         $html .= \html_writer::tag('h2', get_string('welcomeuser', 'theme_echealth', fullname($USER)), ['id' => 'ec-dashboard-welcome']);
-        $introkey = 'dashboardintro';
-        if (has_capability('moodle/site:config', \context_system::instance())) {
+        $html .= \html_writer::tag('p', get_string('dashboardtagline', 'theme_echealth'), ['class' => 'ec-dashboard-tagline']);
+        $introkey = 'dashboardintrostudent';
+        if ($dashboardrole === 'administrator') {
             $introkey = 'dashboardintroadmin';
-        } else {
-            foreach (array_slice($courses, 0, 6) as $course) {
-                if (has_capability('moodle/course:update', \context_course::instance($course->id))) {
-                    $introkey = 'dashboardintroteacher';
-                    break;
-                }
-            }
+        } else if ($dashboardrole === 'lecturer') {
+            $introkey = 'dashboardintroteacher';
+        } else if ($dashboardrole === 'coordinator') {
+            $introkey = 'dashboardintrocoordinator';
         }
         $html .= \html_writer::tag('p', get_string($introkey, 'theme_echealth'), ['class' => 'ec-dashboard-intro']);
         $html .= \html_writer::start_tag('div', ['class' => 'ec-dashboard-stats', 'aria-label' => get_string('learningoverview', 'theme_echealth')]);
-        $html .= $this->echealth_stat_card('book-open', 'enrolledcourses', (string)$coursecount);
-        $html .= $this->echealth_stat_card('check-circle', 'completedcourses', (string)$completedcount);
+        if ($dashboardrole === 'administrator') {
+            $activeusers = $DB->count_records_select('user', 'deleted = 0 AND suspended = 0 AND id > 1');
+            $visiblecourses = $DB->count_records_select('course', 'id <> :siteid AND visible = 1', ['siteid' => SITEID]);
+            $html .= $this->echealth_stat_card('users', 'activelearners', (string)$activeusers);
+            $html .= $this->echealth_stat_card('book-open', 'availablecourses', (string)$visiblecourses);
+        } else if ($dashboardrole === 'lecturer') {
+            $teachingcount = $this->echealth_teaching_course_count($courses);
+            $html .= $this->echealth_stat_card('graduation-cap', 'teachingcourses', (string)$teachingcount);
+            if ($pendinggrading !== null) {
+                $html .= $this->echealth_stat_card('clipboard', 'pendinggrading', (string)$pendinggrading);
+            }
+        } else {
+            $html .= $this->echealth_stat_card('book-open', 'enrolledcourses', (string)$coursecount);
+            $html .= $this->echealth_stat_card('check-circle', 'completedcourses', (string)$completedcount);
+        }
+        if ($badges !== null) {
+            $html .= $this->echealth_stat_card('award', 'earnedbadges', (string)count($badges));
+        }
+        if ($dashboardrole !== 'administrator' && $dashboardrole !== 'lecturer' && $pendinggrading !== null) {
+            $html .= $this->echealth_stat_card('clipboard', 'pendinggrading', (string)$pendinggrading);
+        }
         $html .= \html_writer::end_tag('div');
 
         $html .= \html_writer::start_tag('div', ['class' => 'ec-dashboard-columns']);
+        $html .= \html_writer::start_tag('div', ['class' => 'ec-dashboard-main']);
         $html .= \html_writer::start_tag('section', ['class' => 'ec-dashboard-section', 'aria-labelledby' => 'ec-courses-heading']);
-        $html .= \html_writer::tag('h3', get_string('yourcourses', 'theme_echealth'), ['id' => 'ec-courses-heading']);
+        $courseheading = $dashboardrole === 'lecturer' && $coursecards ? 'teachingcourses' :
+            ($coursecards ? 'yourcourses' : 'explorecourses');
+        $html .= \html_writer::tag('h3', get_string($courseheading, 'theme_echealth'), ['id' => 'ec-courses-heading']);
         if ($coursecards) {
             $html .= \html_writer::tag('div', implode('', $coursecards), ['class' => 'ec-course-grid']);
+        } else if ($cataloguecards) {
+            $html .= \html_writer::tag('div', implode('', $cataloguecards), ['class' => 'ec-course-grid']);
+            $html .= \html_writer::link(new \moodle_url('/course/index.php'), get_string('viewallcourses', 'theme_echealth'),
+                ['class' => 'ec-inline-action ec-view-all-courses']);
         } else {
             $html .= $this->echealth_empty_state('book-open', 'nocourses', 'browsecatalogue', new \moodle_url('/course/index.php'));
         }
         $html .= \html_writer::end_tag('section');
+        $gradebook = $this->echealth_gradebook_summary($courses);
+        if ($gradebook !== '') {
+            $html .= $gradebook;
+        }
+        if ($badges !== null) {
+            $html .= $this->echealth_badge_panel($badges);
+        }
+        $html .= \html_writer::end_tag('div');
 
         $html .= \html_writer::start_tag('div', ['class' => 'ec-dashboard-aside']);
         $html .= \html_writer::start_tag('section', ['class' => 'ec-dashboard-section', 'aria-labelledby' => 'ec-upcoming-heading']);
@@ -353,14 +621,281 @@ class core_renderer extends \theme_boost\output\core_renderer {
         $html .= \html_writer::end_tag('section');
         $html .= \html_writer::start_tag('section', ['class' => 'ec-dashboard-section', 'aria-labelledby' => 'ec-announcements-heading']);
         $html .= \html_writer::tag('h3', get_string('announcements', 'theme_echealth'), ['id' => 'ec-announcements-heading']);
-        $announcementurl = $this->site_announcements_url();
+        $announcementurl = $this->site_announcements_url($courses);
         $html .= $announcements ?: $this->echealth_empty_state('announcement', 'noannouncements',
             $announcementurl ? 'viewannouncements' : null, $announcementurl);
         $html .= \html_writer::end_tag('section');
+        $html .= $notifications;
         $html .= \html_writer::end_tag('div');
         $html .= \html_writer::end_tag('div');
+        $html .= $this->echealth_quick_actions();
         $html .= \html_writer::end_tag('section');
         return $html;
+    }
+
+    /**
+     * Load the current user's earned local Moodle badges when the feature is enabled.
+     *
+     * @return array|null Null when badges are unavailable to this account; otherwise issued badges.
+     */
+    private function echealth_user_badges(): ?array {
+        global $CFG, $USER;
+
+        if (empty($CFG->enablebadges) || !file_exists($CFG->dirroot . '/badges/mybadges.php') ||
+                !has_capability('moodle/badges:manageownbadges', \context_user::instance($USER->id))) {
+            return null;
+        }
+        require_once($CFG->libdir . '/badgeslib.php');
+        return badges_get_user_badges((int)$USER->id);
+    }
+
+    /**
+     * Render visible own course final grades using Moodle's gradebook API and permissions.
+     *
+     * @param array $courses Accessible enrolled courses.
+     * @return string
+     */
+    private function echealth_gradebook_summary(array $courses): string {
+        global $CFG, $USER;
+
+        if (!file_exists($CFG->dirroot . '/grade/report/user/index.php')) {
+            return '';
+        }
+        require_once($CFG->libdir . '/gradelib.php');
+        $items = [];
+        foreach (array_slice($courses, 0, 6) as $course) {
+            $context = \context_course::instance($course->id);
+            if (empty($course->showgrades) || !has_capability('moodle/grade:view', $context) ||
+                    !has_capability('gradereport/user:view', $context)) {
+                continue;
+            }
+            $gradeitem = \grade_item::fetch_course_item($course->id);
+            if (!$gradeitem || ($gradeitem->is_hidden() && !has_capability('moodle/grade:viewhidden', $context))) {
+                continue;
+            }
+            $grade = $gradeitem->get_grade((int)$USER->id, false);
+            if (!$grade) {
+                $gradevalue = get_string('gradepending', 'theme_echealth');
+            } else if ($grade->is_hidden() && !has_capability('moodle/grade:viewhidden', $context)) {
+                continue;
+            } else if ($grade->finalgrade === null) {
+                $gradevalue = get_string('gradepending', 'theme_echealth');
+            } else {
+                $gradevalue = grade_format_gradevalue($grade->finalgrade, $gradeitem);
+            }
+            $url = new \moodle_url('/grade/report/user/index.php', ['id' => $course->id]);
+            $gradehtml = \html_writer::tag('span', $gradevalue, ['class' => 'ec-grade-value']);
+            $items[] = \html_writer::tag('li',
+                \html_writer::link($url, format_string($course->fullname), ['class' => 'ec-grade-course']) . $gradehtml);
+        }
+        if (!$items) {
+            return '';
+        }
+        $html = \html_writer::start_tag('section', ['class' => 'ec-dashboard-section ec-gradebook-panel',
+            'aria-labelledby' => 'ec-gradebook-heading']);
+        $html .= \html_writer::tag('h3', get_string('gradebooksummary', 'theme_echealth'), ['id' => 'ec-gradebook-heading']);
+        $html .= \html_writer::tag('ul', implode('', $items), ['class' => 'ec-gradebook-list']);
+        return $html . \html_writer::end_tag('section');
+    }
+
+    /**
+     * Render the user's most recent issued badges without inventing awards.
+     *
+     * @param array $badges Badges returned by Moodle's badge library.
+     * @return string
+     */
+    private function echealth_badge_panel(array $badges): string {
+        global $CFG;
+
+        $html = \html_writer::start_tag('section', ['class' => 'ec-dashboard-section ec-badges-panel',
+            'aria-labelledby' => 'ec-badges-heading']);
+        $html .= \html_writer::tag('h3', get_string('mybadges', 'theme_echealth'), ['id' => 'ec-badges-heading']);
+        if (!$badges) {
+            $html .= \html_writer::div($this->echealth_icon('award', 'ec-empty-icon') .
+                \html_writer::tag('p', get_string('nobadgesearned', 'theme_echealth')), 'ec-empty-state');
+        } else {
+            $items = [];
+            $fs = get_file_storage();
+            foreach (array_slice($badges, 0, 3) as $badge) {
+                $context = $badge->type == BADGE_TYPE_SITE ? \context_system::instance() :
+                    \context_course::instance($badge->courseid);
+                $image = $fs->get_file($context->id, 'badges', 'badgeimage', $badge->id, '/', 'f3.png');
+                $imageurl = $image && !$image->is_directory()
+                    ? \moodle_url::make_pluginfile_url($context->id, 'badges', 'badgeimage', $badge->id, '/', 'f3')
+                    : $this->image_url('icons/award', 'theme_echealth');
+                $icon = \html_writer::empty_tag('img', ['src' => $imageurl->out(false), 'alt' => '',
+                    'aria-hidden' => 'true', 'class' => 'ec-badge-image']);
+                $url = new \moodle_url('/badges/badge.php', ['hash' => $badge->uniquehash]);
+                $title = \html_writer::link($url, format_string($badge->name), ['class' => 'ec-badge-title']);
+                $date = \html_writer::tag('span', userdate($badge->dateissued, get_string('strftimedate', 'langconfig')),
+                    ['class' => 'ec-badge-date']);
+                $items[] = \html_writer::tag('li', $icon . $title . $date);
+            }
+            $html .= \html_writer::tag('ul', implode('', $items), ['class' => 'ec-badge-list']);
+        }
+        if (file_exists($CFG->dirroot . '/badges/mybadges.php')) {
+            $html .= \html_writer::link(new \moodle_url('/badges/mybadges.php'), get_string('viewallbadges', 'theme_echealth'),
+                ['class' => 'ec-inline-action']);
+        }
+        return $html . \html_writer::end_tag('section');
+    }
+
+    /**
+     * Resolve a dashboard view from capabilities, allowing a learner who also teaches to see staff tools.
+     *
+     * @param array $courses Courses the current account can access.
+     * @return string student, lecturer, coordinator or administrator.
+     */
+    private function echealth_dashboard_role(array $courses): string {
+        $systemcontext = \context_system::instance();
+        if (has_capability('moodle/site:config', $systemcontext)) {
+            return 'administrator';
+        }
+        $isteacher = false;
+        $iscoordinator = has_capability('moodle/cohort:manage', $systemcontext);
+        foreach ($courses as $course) {
+            $coursecontext = \context_course::instance($course->id);
+            $categorycontext = \context_coursecat::instance($course->category);
+            if (has_capability('moodle/category:manage', $categorycontext) ||
+                    has_capability('moodle/site:viewreports', $coursecontext)) {
+                $iscoordinator = true;
+            }
+            if (has_capability('moodle/course:update', $coursecontext) ||
+                    has_capability('mod/assign:grade', $coursecontext)) {
+                $isteacher = true;
+            }
+        }
+        if ($isteacher) {
+            return 'lecturer';
+        }
+        if ($iscoordinator) {
+            return 'coordinator';
+        }
+        return 'student';
+    }
+
+    /**
+     * Count courses where the user can teach or grade.
+     *
+     * @param array $courses Courses the current account can access.
+     * @return int
+     */
+    private function echealth_teaching_course_count(array $courses): int {
+        $count = 0;
+        foreach ($courses as $course) {
+            $context = \context_course::instance($course->id);
+            if (has_capability('moodle/course:update', $context) || has_capability('mod/assign:grade', $context)) {
+                $count++;
+            }
+        }
+        return $count;
+    }
+
+    /**
+     * Render useful dashboard destinations only when the current user can use them.
+     *
+     * @return string
+     */
+    private function echealth_quick_actions(): string {
+        global $CFG;
+
+        $context = \context_system::instance();
+        $actions = [];
+        $this->add_echealth_quick_action($actions, 'catalogue', new \moodle_url('/course/index.php'), 'catalogue');
+        $this->add_echealth_quick_action($actions, 'calendar', new \moodle_url('/calendar/view.php'), 'calendar');
+        $createcategoryid = $this->echealth_course_creation_category();
+        if (file_exists($CFG->dirroot . '/course/edit.php') && $createcategoryid !== null) {
+            $this->add_echealth_quick_action($actions, 'createcourse', new \moodle_url('/course/edit.php', ['category' => $createcategoryid]), 'plus');
+        }
+        if (file_exists($CFG->dirroot . '/admin/user.php') && (
+                has_capability('moodle/user:create', $context) || has_capability('moodle/user:update', $context))) {
+            $this->add_echealth_quick_action($actions, 'users', new \moodle_url('/admin/user.php'), 'users');
+        }
+        if (file_exists($CFG->dirroot . '/cohort/index.php') && has_capability('moodle/cohort:manage', $context)) {
+            $this->add_echealth_quick_action($actions, 'cohorts', new \moodle_url('/cohort/index.php'), 'campus');
+        }
+        if (file_exists($CFG->dirroot . '/reportbuilder/index.php') && has_capability('moodle/site:config', $context)) {
+            $this->add_echealth_quick_action($actions, 'reports', new \moodle_url('/reportbuilder/index.php'), 'reports');
+        }
+        if (file_exists($CFG->dirroot . '/mod/assign/index.php')) {
+            foreach (enrol_get_my_courses('id, fullname', 'sortorder ASC', 30) as $course) {
+                if (has_capability('mod/assign:grade', \context_course::instance($course->id))) {
+                    $this->add_echealth_quick_action($actions, 'reviewgrading',
+                        new \moodle_url('/mod/assign/index.php', ['id' => $course->id]), 'clipboard');
+                    break;
+                }
+            }
+        }
+
+        $html = \html_writer::start_tag('section', ['class' => 'ec-quick-actions', 'aria-labelledby' => 'ec-quick-actions-heading']);
+        $html .= \html_writer::tag('h3', get_string('quickactions', 'theme_echealth'), ['id' => 'ec-quick-actions-heading']);
+        $html .= \html_writer::tag('div', implode('', $actions), ['class' => 'ec-quick-action-grid']);
+        $html .= \html_writer::end_tag('section');
+        return $html;
+    }
+
+    /**
+     * Add an icon-and-label dashboard action.
+     *
+     * @param array $actions
+     * @param string $labelkey
+     * @param \moodle_url $url
+     * @param string $icon
+     */
+    private function add_echealth_quick_action(array &$actions, string $labelkey, \moodle_url $url, string $icon): void {
+        $iconhtml = \html_writer::empty_tag('img', [
+            'src' => $this->image_url('icons/' . $icon, 'theme_echealth')->out(false),
+            'alt' => '',
+            'aria-hidden' => 'true',
+            'class' => 'ec-quick-action-icon',
+        ]);
+        $actions[] = \html_writer::link($url, $iconhtml . \html_writer::tag('span', get_string($labelkey, 'theme_echealth')),
+            ['class' => 'ec-quick-action']);
+    }
+
+    /**
+     * Check course-management capabilities at system or visible category scope.
+     *
+     * @return bool
+     */
+    private function echealth_can_manage_courses(): bool {
+        if ($this->echealthcanmanagecourses !== null) {
+            return $this->echealthcanmanagecourses;
+        }
+        $systemcontext = \context_system::instance();
+        if (has_capability('moodle/course:create', $systemcontext) ||
+                has_capability('moodle/category:manage', $systemcontext)) {
+            $this->echealthcanmanagecourses = true;
+            return $this->echealthcanmanagecourses;
+        }
+        foreach (\core_course_category::get_all(['returnhidden' => true]) as $category) {
+            $categorycontext = $category->get_context();
+            if (has_capability('moodle/course:create', $categorycontext) ||
+                    has_capability('moodle/category:manage', $categorycontext)) {
+                $this->echealthcanmanagecourses = true;
+                return $this->echealthcanmanagecourses;
+            }
+        }
+        $this->echealthcanmanagecourses = false;
+        return $this->echealthcanmanagecourses;
+    }
+
+    /**
+     * Return a course category where the current user can create courses.
+     *
+     * @return int|null
+     */
+    private function echealth_course_creation_category(): ?int {
+        $defaultcategory = \core_course_category::get_default();
+        if (has_capability('moodle/course:create', $defaultcategory->get_context())) {
+            return (int)$defaultcategory->id;
+        }
+        foreach (\core_course_category::get_all(['returnhidden' => true]) as $category) {
+            if (has_capability('moodle/course:create', $category->get_context())) {
+                return (int)$category->id;
+            }
+        }
+        return null;
     }
 
     /**
@@ -390,7 +925,7 @@ class core_renderer extends \theme_boost\output\core_renderer {
      * @param array $courses
      * @return array
      */
-    private function echealth_course_cards(array $courses): array {
+    private function echealth_course_cards(array $courses, bool $showprogress = true, bool $iscatalogue = true): array {
         $categories = [];
         foreach ($courses as $course) {
             $categories[$course->category] = true;
@@ -415,10 +950,11 @@ class core_renderer extends \theme_boost\output\core_renderer {
 
             $categoryname = $categorynames[$course->category] ?? get_string('uncategorised', 'theme_echealth');
             $progress = null;
-            if (!empty($course->enablecompletion)) {
+            if ($showprogress && !empty($course->enablecompletion)) {
                 $progress = \core_completion\progress::get_course_progress_percentage($course);
             }
-            $meta = \html_writer::tag('span', $categoryname, ['class' => 'ec-course-category']);
+            $categoryicon = $this->echealth_icon('book', 'ec-course-meta-icon');
+            $meta = \html_writer::tag('span', $categoryicon . format_string($categoryname), ['class' => 'ec-course-category']);
             if ($progress !== null) {
                 $progressvalue = (int)floor($progress);
                 $meta .= \html_writer::tag('div',
@@ -427,8 +963,11 @@ class core_renderer extends \theme_boost\output\core_renderer {
                         'aria-valuemin' => 0, 'aria-valuemax' => 100, 'aria-valuetext' => get_string('progress', 'theme_echealth', $progressvalue),
                         'aria-label' => get_string('courseprogress', 'theme_echealth', format_string($course->fullname))]
                 );
-            } else {
+            } else if ($showprogress) {
                 $meta .= \html_writer::tag('span', get_string('progressnottracked', 'theme_echealth'), ['class' => 'ec-progress-note']);
+            } else {
+                $label = $iscatalogue ? 'cataloguecourse' : 'teachingcourse';
+                $meta .= \html_writer::tag('span', get_string($label, 'theme_echealth'), ['class' => 'ec-progress-note']);
             }
             $courseurl = new \moodle_url('/course/view.php', ['id' => $course->id]);
             $image = \html_writer::empty_tag('img', [
@@ -439,11 +978,76 @@ class core_renderer extends \theme_boost\output\core_renderer {
                 'loading' => 'lazy',
             ]);
             $link = \html_writer::link($courseurl, format_string($course->fullname), ['class' => 'ec-course-title']);
-            $footer = \html_writer::link($courseurl, get_string('opencourse', 'theme_echealth'), ['class' => 'ec-course-action']);
+            $footer = \html_writer::link($courseurl,
+                get_string('opencourse', 'theme_echealth') . $this->echealth_icon('arrow-right', 'ec-course-action-icon'),
+                ['class' => 'ec-course-action']);
             $cards[] = \html_writer::tag('article', $image .
                 \html_writer::div($meta . $link . $footer, 'ec-course-card-content'), ['class' => 'ec-course-card']);
         }
         return $cards;
+    }
+
+    /**
+     * Return up to six visible catalogue courses, one card per distinct course title.
+     * These are discovery links, not enrolments or personal progress.
+     *
+     * @return array
+     */
+    private function echealth_catalogue_courses(): array {
+        $courses = get_courses('all', 'c.sortorder ASC',
+            'c.id, c.fullname, c.shortname, c.summary, c.category, c.startdate, c.enddate, c.enablecompletion, c.cacherev');
+        $selected = [];
+        $seen = [];
+        foreach ($courses as $course) {
+            if ((int)$course->id === SITEID) {
+                continue;
+            }
+            $key = \core_text::strtolower(trim($course->fullname));
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $selected[] = $course;
+            if (count($selected) >= 6) {
+                break;
+            }
+        }
+        return $selected;
+    }
+
+    /**
+     * Count real assignment submissions awaiting grading in courses this user grades.
+     * Returns null for users without grading permissions, so learners don't see an irrelevant metric.
+     *
+     * @param array $courses
+     * @return int|null
+     */
+    private function echealth_pending_grading_count(array $courses): ?int {
+        global $CFG;
+
+        $hasgradingpermission = false;
+        $pending = 0;
+        $loadedassignlibrary = false;
+        foreach ($courses as $course) {
+            $coursecontext = \context_course::instance($course->id);
+            if (!has_capability('mod/assign:grade', $coursecontext)) {
+                continue;
+            }
+            $hasgradingpermission = true;
+            $modinfo = get_fast_modinfo($course);
+            foreach ($modinfo->get_instances_of('assign') as $cm) {
+                if (!$cm->uservisible || !has_capability('mod/assign:grade', \context_module::instance($cm->id))) {
+                    continue;
+                }
+                if (!$loadedassignlibrary) {
+                    require_once($CFG->dirroot . '/mod/assign/locallib.php');
+                    $loadedassignlibrary = true;
+                }
+                $assignment = new \assign(\context_module::instance($cm->id), $cm, $course);
+                $pending += $assignment->count_submissions_need_grading();
+            }
+        }
+        return $hasgradingpermission ? $pending : null;
     }
 
     /**
@@ -453,9 +1057,10 @@ class core_renderer extends \theme_boost\output\core_renderer {
      * @return string|null
      */
     private function echealth_sample_course_image(string $fullname): ?string {
-        $name = core_text::strtolower($fullname);
+        $name = \core_text::strtolower($fullname);
         $samples = [
             'infection prevention' => 'infection-prevention.webp',
+            'foundations of nursing' => 'fundamentals-nursing.webp',
             'fundamentals of nursing' => 'fundamentals-nursing.webp',
             'clinical skills' => 'clinical-skills.webp',
             'maternal and child health' => 'maternal-child-health.webp',
@@ -479,21 +1084,30 @@ class core_renderer extends \theme_boost\output\core_renderer {
     private function echealth_upcoming_events(array $courses): string {
         global $CFG, $USER;
 
-        if (!$courses) {
-            return '';
-        }
         require_once($CFG->dirroot . '/calendar/lib.php');
-        $courseids = array_map(static fn($course) => (int)$course->id, $courses);
-        $events = calendar_get_events(time(), time() + (30 * DAYSECS), (int)$USER->id, false, $courseids, true, true);
+        $courseids = [SITEID];
+        $groupids = [];
+        foreach ($courses as $course) {
+            $courseids[] = (int)$course->id;
+            foreach (groups_get_user_groups((int)$course->id, (int)$USER->id) as $groups) {
+                foreach ($groups as $groupid) {
+                    $groupids[] = (int)$groupid;
+                }
+            }
+        }
+        $courseids = array_values(array_unique($courseids));
+        $groupids = array_values(array_unique($groupids));
+        $events = calendar_get_events(time(), time() + (30 * DAYSECS), (int)$USER->id,
+            $groupids ?: false, $courseids, true, true);
         if (!$events) {
             return '';
         }
         $items = [];
-        foreach (array_slice($events, 0, 4) as $event) {
+        foreach (array_slice($events, 0, 5) as $event) {
             $date = userdate($event->timestart, get_string('strftimedate', 'langconfig'));
             $url = new \moodle_url('/calendar/view.php', ['view' => 'day', 'time' => $event->timestart]);
             $items[] = \html_writer::tag('li',
-                \html_writer::tag('span', $date, ['class' => 'ec-event-date']) .
+                \html_writer::tag('span', $this->echealth_icon('clock', 'ec-inline-icon') . $date, ['class' => 'ec-event-date']) .
                 \html_writer::link($url, format_string($event->name), ['class' => 'ec-event-title']));
         }
         return \html_writer::tag('ul', implode('', $items), ['class' => 'ec-event-list']);
@@ -504,29 +1118,79 @@ class core_renderer extends \theme_boost\output\core_renderer {
      *
      * @return string
      */
-    private function echealth_announcements(): string {
-        global $CFG;
+    private function echealth_announcements(array $courses): string {
+        global $CFG, $DB;
 
-        $module = $this->get_site_announcement_module();
-        if (!$module) {
-            return '';
-        }
-        [$cmid, $context] = $module;
-        if (!has_capability('mod/forum:viewdiscussion', $context)) {
-            return '';
-        }
         require_once($CFG->dirroot . '/mod/forum/lib.php');
-        $cm = get_coursemodule_from_id('forum', $cmid, SITEID, false, MUST_EXIST);
-        $discussions = forum_get_discussions($cm, 'p.modified DESC', true, -1, 3);
+        $forums = [];
+        $siteannouncement = $this->get_site_announcement_module();
+        if ($siteannouncement) {
+            $forums[] = [$siteannouncement[0], SITEID];
+        }
+        foreach (array_slice($courses, 0, 30) as $course) {
+            foreach (get_fast_modinfo($course)->get_instances_of('forum') as $cm) {
+                if (!$cm->uservisible || !has_capability('mod/forum:viewdiscussion', \context_module::instance($cm->id))) {
+                    continue;
+                }
+                $forum = $DB->get_record('forum', ['id' => $cm->instance], 'id, type', IGNORE_MISSING);
+                if ($forum && $forum->type === 'news') {
+                    $forums[] = [$cm->id, (int)$course->id];
+                }
+            }
+        }
+        if (!$forums) {
+            return '';
+        }
+        $discussions = [];
+        foreach ($forums as [$cmid, $courseid]) {
+            $cm = get_coursemodule_from_id('forum', $cmid, $courseid, false, IGNORE_MISSING);
+            if (!$cm) {
+                continue;
+            }
+            foreach (forum_get_discussions($cm, 'p.modified DESC', true, -1, 5) as $discussion) {
+                $discussion->ec_courseid = $courseid;
+                $discussions[] = $discussion;
+            }
+        }
+        usort($discussions, static fn($a, $b) => (int)$b->timemodified <=> (int)$a->timemodified);
+        $discussions = array_slice($discussions, 0, 4);
         if (!$discussions) {
             return '';
         }
         $items = [];
         foreach ($discussions as $discussion) {
             $url = new \moodle_url('/mod/forum/discuss.php', ['d' => $discussion->discussion]);
-            $items[] = \html_writer::tag('li', \html_writer::link($url, format_string($discussion->name)));
+            $items[] = \html_writer::tag('li', \html_writer::link($url,
+                $this->echealth_icon('announcement', 'ec-inline-icon') . format_string($discussion->name) .
+                \html_writer::tag('span', userdate($discussion->timemodified, get_string('strftimedate', 'langconfig')),
+                    ['class' => 'ec-announcement-date'])));
         }
         return \html_writer::tag('ul', implode('', $items), ['class' => 'ec-announcement-list']);
+    }
+
+    /**
+     * Render the user's unread Moodle notifications and native notification controls.
+     *
+     * @return string
+     */
+    private function echealth_notifications(): string {
+        global $USER;
+
+        if (!\core_message\api::is_processor_enabled('popup')) {
+            return '';
+        }
+        $count = \message_popup\api::count_unread_popup_notifications((int)$USER->id);
+        $html = \html_writer::start_tag('section', ['class' => 'ec-dashboard-section', 'aria-labelledby' => 'ec-notifications-heading']);
+        $html .= \html_writer::tag('h3', get_string('notifications', 'message'), ['id' => 'ec-notifications-heading']);
+        $message = get_string($count ? 'unreadnotifications' : 'nounreadnotifications', 'theme_echealth', $count);
+        $html .= \html_writer::tag('p', $this->echealth_icon('bell', 'ec-inline-icon') . $message, ['class' => 'ec-notification-count']);
+        $html .= \html_writer::link(new \moodle_url('/message/output/popup/notifications.php'),
+            get_string('viewnotifications', 'theme_echealth'), ['class' => 'ec-inline-action']);
+        if (has_capability('moodle/user:editownmessageprofile', \context_system::instance())) {
+            $html .= ' ' . \html_writer::link(new \moodle_url('/message/notificationpreferences.php'),
+                get_string('notificationpreferences', 'message'), ['class' => 'ec-inline-action']);
+        }
+        return $html . \html_writer::end_tag('section');
     }
 
     /**
@@ -534,9 +1198,25 @@ class core_renderer extends \theme_boost\output\core_renderer {
      *
      * @return \moodle_url
      */
-    private function site_announcements_url(): ?\moodle_url {
+    private function site_announcements_url(array $courses): ?\moodle_url {
+        global $DB;
+
         $module = $this->get_site_announcement_module();
-        return $module ? new \moodle_url('/mod/forum/view.php', ['id' => $module[0]]) : null;
+        if ($module) {
+            return new \moodle_url('/mod/forum/view.php', ['id' => $module[0]]);
+        }
+        foreach ($courses as $course) {
+            foreach (get_fast_modinfo($course)->get_instances_of('forum') as $cm) {
+                if (!$cm->uservisible || !has_capability('mod/forum:viewdiscussion', \context_module::instance($cm->id))) {
+                    continue;
+                }
+                $forum = $DB->get_record('forum', ['id' => $cm->instance], 'id, type', IGNORE_MISSING);
+                if ($forum && $forum->type === 'news') {
+                    return new \moodle_url('/mod/forum/view.php', ['id' => $cm->id]);
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -549,16 +1229,27 @@ class core_renderer extends \theme_boost\output\core_renderer {
      * @return string
      */
     private function echealth_empty_state(string $icon, string $messagekey, ?string $actionkey, ?\moodle_url $url): string {
-        $iconhtml = \html_writer::empty_tag('img', [
-            'src' => $this->image_url('icons/' . $icon, 'theme_echealth')->out(false),
-            'alt' => '',
-            'aria-hidden' => 'true',
-            'class' => 'ec-empty-icon',
-        ]);
+        $iconhtml = $this->echealth_icon($icon, 'ec-empty-icon');
         $html = $iconhtml . \html_writer::tag('p', get_string($messagekey, 'theme_echealth'));
         if ($actionkey && $url) {
             $html .= \html_writer::link($url, get_string($actionkey, 'theme_echealth'), ['class' => 'ec-inline-action']);
         }
         return \html_writer::div($html, 'ec-empty-state');
+    }
+
+    /**
+     * Return a decorative, Moodle-served kit icon.
+     *
+     * @param string $icon
+     * @param string $class
+     * @return string
+     */
+    private function echealth_icon(string $icon, string $class): string {
+        return \html_writer::empty_tag('img', [
+            'src' => $this->image_url('icons/' . $icon, 'theme_echealth')->out(false),
+            'alt' => '',
+            'aria-hidden' => 'true',
+            'class' => $class,
+        ]);
     }
 }
