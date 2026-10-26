@@ -1,0 +1,24 @@
+{
+  "project": "Eastern Cape Department of Health Moodle UI/navigation demo asset kit",
+  "branding_source": "User supplied departmental logo and official government website screenshot",
+  "assets": {
+    "logo": "assets/branding/eastern-cape-health-logo.png",
+    "icon_directory": "assets/icons/",
+    "stripe": "assets/graphics/government-stripe.svg",
+    "hero": "assets/graphics/hero-panel.svg",
+    "course_images": [
+      "assets/images/infection-prevention.webp",
+      "assets/images/fundamentals-nursing.webp",
+      "assets/images/clinical-skills.webp",
+      "assets/images/maternal-child-health.webp",
+      "assets/images/emergency-nursing.webp",
+      "assets/images/healthcare-ethics.webp"
+    ],
+    "reference": "preview/dashboard-visual-reference.png"
+  },
+  "notes": [
+    "Course thumbnails are small demo crops from a generated concept; replace with approved original high resolution imagery for deployment.",
+    "Icons inherit currentColor; semantic decorative icons use aria-hidden=true, icon-only controls require accessible names.",
+    "No source files from Moodle are changed by this kit."
+  ]
+}

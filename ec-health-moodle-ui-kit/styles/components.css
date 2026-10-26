@@ -1,0 +1,16 @@
+/* Design guidance — integrate into a Moodle child theme SCSS, not as core edits. */
+.ec-brand-strip { height:5px; background:linear-gradient(90deg,var(--ec-green) 0 34%,var(--ec-gold) 34% 54%,var(--ec-red) 54% 78%,var(--ec-blue) 78% 100%); }
+.ec-layout {display:grid;grid-template-columns:var(--ec-sidebar-width) minmax(0,1fr);min-height:100vh;background:var(--ec-background)}
+.ec-sidebar {background:#fff;border-right:1px solid var(--ec-border);padding:16px 10px;}
+.ec-nav-item {display:flex;gap:12px;align-items:center;min-height:42px;border-radius:8px;padding:0 12px;color:var(--ec-text);text-decoration:none;font-weight:500}
+.ec-nav-item svg{width:19px;height:19px;flex-shrink:0}
+.ec-nav-item[aria-current="page"]{background:var(--ec-green);color:#fff}
+.ec-nav-item:hover:not([aria-current="page"]){background:#f2f7f4}
+.ec-card {background:var(--ec-surface);border:1px solid var(--ec-border);border-radius:var(--ec-radius-md);box-shadow:var(--ec-shadow)}
+.ec-course-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.ec-course-image{width:100%;aspect-ratio:16/6;object-fit:cover;display:block}
+.ec-icon{width:20px;height:20px;display:inline-block;vertical-align:middle;color:currentColor}
+.ec-skip-link{position:absolute;left:-10000px;top:auto}
+.ec-skip-link:focus{left:12px;top:12px;z-index:10000;background:white;padding:12px}
+@media(max-width:1100px){.ec-course-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.ec-layout{display:block}.ec-sidebar{display:none}.ec-course-grid{grid-template-columns:1fr}}

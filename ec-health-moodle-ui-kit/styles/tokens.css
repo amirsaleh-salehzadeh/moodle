@@ -1,0 +1,9 @@
+:root {
+ --ec-green:#087C4A; --ec-green-dark:#06623A; --ec-gold:#E5B522;
+ --ec-red:#D73527; --ec-blue:#20458F; --ec-black:#111111;
+ --ec-text:#18212B; --ec-muted:#667085; --ec-background:#F6F8FA;
+ --ec-white:#FFFFFF; --ec-border:#E5E8EC; --ec-surface:#FFFFFF;
+ --ec-sidebar-width:248px; --ec-header-height:94px;
+ --ec-radius-sm:8px; --ec-radius-md:12px; --ec-radius-lg:16px;
+ --ec-shadow:0 3px 18px rgba(15,23,42,.055);
+}
