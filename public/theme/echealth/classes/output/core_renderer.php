@@ -521,24 +521,15 @@ class core_renderer extends \theme_boost\output\core_renderer {
         if ($support) {
             $groups[] = ['key' => 'support', 'items' => $support];
         }
-        // Render one deterministic active panel in the initial HTML. Bootstrap
-        // tabs take over after load, but the page never starts with stacked panels.
-        $selectedgroup = 'learning';
-        foreach ($groups as $group) {
-            if ($this->echealth_nav_children_active($group['items'])) {
-                $selectedgroup = $group['key'];
-                break;
-            }
-        }
         $html = \html_writer::start_tag('nav', ['class' => 'ec-navigation ec-mega-navigation', 'aria-label' => get_string('primarynavigation', 'theme_echealth')]);
         $html .= \html_writer::start_tag('div', ['class' => 'ec-mega-tabs nav nav-tabs', 'role' => 'tablist']);
         foreach ($groups as $group) {
-            $html .= $this->render_echealth_nav_group($group['key'], $group['items'], $group['key'] === $selectedgroup)['tab'];
+            $html .= $this->render_echealth_nav_group($group['key'], $group['items'])['tab'];
         }
         $html .= \html_writer::end_tag('div');
         $html .= \html_writer::start_tag('div', ['class' => 'ec-mega-panels tab-content']);
         foreach ($groups as $group) {
-            $html .= $this->render_echealth_nav_group($group['key'], $group['items'], $group['key'] === $selectedgroup)['panel'];
+            $html .= $this->render_echealth_nav_group($group['key'], $group['items'])['panel'];
         }
         $html .= \html_writer::end_tag('div');
         $html .= \html_writer::end_tag('nav');
@@ -794,7 +785,16 @@ class core_renderer extends \theme_boost\output\core_renderer {
                 $completionparams
             );
         }
-        $pendinggrading = $this->echealth_pending_grading_count(array_slice($courses, 0, 30));
+        $gradingcourses = $courses;
+        if ($dashboardrole === 'administrator') {
+            $gradingcourses = get_courses('all', 'c.sortorder ASC',
+                'c.id, c.fullname, c.category, c.visible, c.enablecompletion, c.cacherev');
+            $gradingcourses = array_values(array_filter($gradingcourses, static function($course) {
+                return (int)$course->id !== SITEID && !empty($course->visible) &&
+                    has_capability('mod/assign:grade', \context_course::instance($course->id));
+            }));
+        }
+        $pendinggrading = $this->echealth_pending_grading_count(array_slice($gradingcourses, 0, 30));
         $badges = $this->echealth_user_badges();
         $dashboardcourses = $dashboardrole === 'lecturer'
             ? array_values(array_filter($courses, function($course) {
@@ -802,9 +802,10 @@ class core_renderer extends \theme_boost\output\core_renderer {
                 return has_capability('moodle/course:update', $context) || has_capability('mod/assign:grade', $context);
             })) : $courses;
         $staffdashboard = $dashboardrole === 'lecturer';
-        $coursecards = $this->echealth_course_cards(array_slice($dashboardcourses, 0, 6), !$staffdashboard, !$staffdashboard);
-        $cataloguecards = $coursecards ? [] : $this->echealth_course_cards($this->echealth_catalogue_courses(), false);
-        $upcoming = $this->echealth_upcoming_events($courses);
+        $coursecards = $this->echealth_course_cards(array_slice($dashboardcourses, 0, 3), !$staffdashboard, !$staffdashboard);
+        $cataloguecards = $coursecards ? [] : $this->echealth_course_cards($this->echealth_catalogue_courses(3), false);
+        $pendingassessmentcount = 0;
+        $upcoming = $this->echealth_upcoming_events($courses, $pendingassessmentcount);
         $announcements = $this->echealth_announcements($courses);
         $notifications = $this->echealth_notifications();
 
@@ -812,7 +813,6 @@ class core_renderer extends \theme_boost\output\core_renderer {
             'class' => 'ec-dashboard-panel',
             'aria-labelledby' => 'ec-dashboard-welcome',
         ]);
-        $html .= \html_writer::tag('p', get_string('dashboardeyebrow', 'theme_echealth'), ['class' => 'ec-dashboard-eyebrow']);
         $html .= \html_writer::tag('h2', get_string('welcomeuser', 'theme_echealth', fullname($USER)), ['id' => 'ec-dashboard-welcome']);
         $html .= \html_writer::tag('p', get_string('dashboardtagline', 'theme_echealth'), ['class' => 'ec-dashboard-tagline']);
         $introkey = 'dashboardintrostudent';
@@ -830,21 +830,24 @@ class core_renderer extends \theme_boost\output\core_renderer {
             $visiblecourses = $DB->count_records_select('course', 'id <> :siteid AND visible = 1', ['siteid' => SITEID]);
             $html .= $this->echealth_stat_card('users', 'activelearners', (string)$activeusers);
             $html .= $this->echealth_stat_card('book-open', 'availablecourses', (string)$visiblecourses);
+            $html .= $this->echealth_stat_card('clipboard', 'pendingassessments',
+                $pendinggrading === null ? get_string('metricunavailable', 'theme_echealth') : (string)$pendinggrading);
         } else if ($dashboardrole === 'lecturer') {
             $teachingcount = $this->echealth_teaching_course_count($courses);
             $html .= $this->echealth_stat_card('graduation-cap', 'teachingcourses', (string)$teachingcount);
             if ($pendinggrading !== null) {
-                $html .= $this->echealth_stat_card('clipboard', 'pendinggrading', (string)$pendinggrading);
+                $html .= $this->echealth_stat_card('clipboard', 'pendingassessments', (string)$pendinggrading);
             }
+            $html .= $this->echealth_stat_card('book-open', 'enrolledcourses', (string)$coursecount);
         } else {
             $html .= $this->echealth_stat_card('book-open', 'enrolledcourses', (string)$coursecount);
             $html .= $this->echealth_stat_card('check-circle', 'completedcourses', (string)$completedcount);
+            $html .= $this->echealth_stat_card('clipboard', 'pendingassessments', (string)$pendingassessmentcount);
         }
         if ($badges !== null) {
             $html .= $this->echealth_stat_card('award', 'earnedbadges', (string)count($badges));
-        }
-        if ($dashboardrole !== 'administrator' && $dashboardrole !== 'lecturer' && $pendinggrading !== null) {
-            $html .= $this->echealth_stat_card('clipboard', 'pendinggrading', (string)$pendinggrading);
+        } else {
+            $html .= $this->echealth_stat_card('award', 'badgesunavailable', get_string('metricunavailable', 'theme_echealth'));
         }
         $html .= \html_writer::end_tag('div');
 
@@ -856,6 +859,8 @@ class core_renderer extends \theme_boost\output\core_renderer {
         $html .= \html_writer::tag('h3', get_string($courseheading, 'theme_echealth'), ['id' => 'ec-courses-heading']);
         if ($coursecards) {
             $html .= \html_writer::tag('div', implode('', $coursecards), ['class' => 'ec-course-grid']);
+            $html .= \html_writer::link(new \moodle_url('/my/courses.php'), get_string('viewallcourses', 'theme_echealth'),
+                ['class' => 'ec-inline-action ec-view-all-courses']);
         } else if ($cataloguecards) {
             $html .= \html_writer::tag('div', implode('', $cataloguecards), ['class' => 'ec-course-grid']);
             $html .= \html_writer::link(new \moodle_url('/course/index.php'), get_string('viewallcourses', 'theme_echealth'),
@@ -1172,9 +1177,20 @@ class core_renderer extends \theme_boost\output\core_renderer {
             'aria-hidden' => 'true',
             'class' => 'ec-stat-icon',
         ]);
+        $accent = [
+            'activelearners' => 'ec-stat-green',
+            'availablecourses' => 'ec-stat-blue',
+            'pendinggrading' => 'ec-stat-orange',
+            'pendingassessments' => 'ec-stat-orange',
+            'earnedbadges' => 'ec-stat-purple',
+            'badgesunavailable' => 'ec-stat-purple',
+            'enrolledcourses' => 'ec-stat-blue',
+            'completedcourses' => 'ec-stat-green',
+            'teachingcourses' => 'ec-stat-blue',
+        ][$labelkey] ?? 'ec-stat-green';
         $content = $iconhtml . \html_writer::tag('span', $value, ['class' => 'ec-stat-value']) .
             \html_writer::tag('span', get_string($labelkey, 'theme_echealth'), ['class' => 'ec-stat-label']);
-        return \html_writer::tag('div', $content, ['class' => 'ec-stat-card']);
+        return \html_writer::tag('div', $content, ['class' => 'ec-stat-card ' . $accent]);
     }
 
     /**
@@ -1252,13 +1268,13 @@ class core_renderer extends \theme_boost\output\core_renderer {
      *
      * @return array
      */
-    private function echealth_catalogue_courses(): array {
+    private function echealth_catalogue_courses(int $limit = 6): array {
         $courses = get_courses('all', 'c.sortorder ASC',
-            'c.id, c.fullname, c.shortname, c.summary, c.category, c.startdate, c.enddate, c.enablecompletion, c.cacherev');
+            'c.id, c.fullname, c.shortname, c.summary, c.category, c.format, c.startdate, c.enddate, c.enablecompletion, c.cacherev');
         $selected = [];
         $seen = [];
         foreach ($courses as $course) {
-            if ((int)$course->id === SITEID) {
+            if ((int)$course->id === SITEID || $course->format === 'site') {
                 continue;
             }
             $key = \core_text::strtolower(trim($course->fullname));
@@ -1267,7 +1283,7 @@ class core_renderer extends \theme_boost\output\core_renderer {
             }
             $seen[$key] = true;
             $selected[] = $course;
-            if (count($selected) >= 6) {
+            if (count($selected) >= $limit) {
                 break;
             }
         }
@@ -1340,7 +1356,7 @@ class core_renderer extends \theme_boost\output\core_renderer {
      * @param array $courses
      * @return string
      */
-    private function echealth_upcoming_events(array $courses): string {
+    private function echealth_upcoming_events(array $courses, ?int &$pendingassessmentcount = null): string {
         global $CFG, $USER;
 
         require_once($CFG->dirroot . '/calendar/lib.php');
@@ -1358,18 +1374,28 @@ class core_renderer extends \theme_boost\output\core_renderer {
         $groupids = array_values(array_unique($groupids));
         $events = calendar_get_events(time(), time() + (30 * DAYSECS), (int)$USER->id,
             $groupids ?: false, $courseids, true, true);
+        $pendingassessmentcount = 0;
         if (!$events) {
             return '';
+        }
+        foreach ($events as $event) {
+            if (in_array($event->modulename ?? '', ['assign', 'quiz'], true) &&
+                    in_array($event->eventtype ?? '', ['due', 'close'], true)) {
+                $pendingassessmentcount++;
+            }
         }
         $items = [];
         foreach (array_slice($events, 0, 5) as $event) {
             $date = userdate($event->timestart, get_string('strftimedate', 'langconfig'));
-            $url = new \moodle_url('/calendar/view.php', ['view' => 'day', 'time' => $event->timestart]);
+            $url = !empty($event->url) ? $event->url :
+                new \moodle_url('/calendar/view.php', ['view' => 'day', 'time' => $event->timestart]);
             $items[] = \html_writer::tag('li',
                 \html_writer::tag('span', $this->echealth_icon('clock', 'ec-inline-icon') . $date, ['class' => 'ec-event-date']) .
                 \html_writer::link($url, format_string($event->name), ['class' => 'ec-event-title']));
         }
-        return \html_writer::tag('ul', implode('', $items), ['class' => 'ec-event-list']);
+        return \html_writer::tag('ul', implode('', $items), ['class' => 'ec-event-list']) .
+            \html_writer::link(new \moodle_url('/calendar/view.php'), get_string('viewcalendar', 'theme_echealth'),
+                ['class' => 'ec-inline-action']);
     }
 
     /**

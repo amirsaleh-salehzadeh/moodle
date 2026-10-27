@@ -107,10 +107,20 @@ body.pagelayout-login #page {
 }
 
 .navbar.fixed-top {
-    position: static !important;
+    position: relative !important;
     top: auto;
+    // Keep account and notification menus above the secondary navigation row.
+    // Static positioning removes Boost's stacking layer, so open menus could
+    // otherwise be painted underneath the theme navigation that follows it.
+    // This row appears before the custom primary navigation in the DOM. It
+    // needs a higher layer so account menus are not covered by that navigation.
+    z-index: 1040 !important;
     border-top: 0;
     border-bottom-color: #dedfe1;
+}
+
+.navbar.fixed-top .dropdown-menu {
+    z-index: 1050;
 }
 
 // Boost limits its default content column to 830px. Widen only the two home
@@ -121,6 +131,17 @@ body.pagelayout-mydashboard #page.drawers .main-inner {
     width: min(100% - 2rem, 1400px);
     max-width: 1400px;
     margin-top: .5rem;
+}
+
+// Let the dashboard use a fluid canvas up to a reasonable wide-screen limit.
+// Its width stays the same when the block drawer overlays it.
+@media (min-width: 768px) {
+    body.pagelayout-mydashboard #page.drawers .main-inner {
+        box-sizing: border-box;
+        width: min(100% - 2rem, 1600px);
+        max-width: 1600px;
+        margin-inline: auto;
+    }
 }
 
 body.pagelayout-frontpage #page.drawers,
@@ -331,6 +352,17 @@ body.pagelayout-mydashboard .block_settings {
     min-width: 0;
 }
 
+body.pagelayout-mydashboard #page.drawers {
+    transition: none !important;
+}
+
+// Moodle's closed messaging drawer remains positioned just beyond the right
+// edge; clip its offscreen extent while this overlay is open so it cannot add
+// a horizontal scrollbar to the dashboard.
+html:has(body.pagelayout-mydashboard #page.drawers.show-drawer-right) {
+    overflow-x: clip;
+}
+
 .ec-nav-subgroup > summary {
     cursor: pointer;
     list-style: none;
@@ -396,7 +428,8 @@ body.pagelayout-mydashboard .block_settings {
 // rendered expanded as columns, so their links never need a disclosure click.
 .ec-desktop-megamenu {
     position: relative;
-    z-index: 1030;
+    // Keep the custom nav below the account popover in the Moodle navbar.
+    z-index: 1020;
     overflow: visible;
     border-bottom: 1px solid $ec-border;
     background: #fff;
@@ -423,7 +456,7 @@ body.pagelayout-mydashboard .block_settings {
     top: var(--ec-mega-panel-top, 9rem);
     right: 0;
     left: 0;
-    z-index: 1031;
+    z-index: 1021;
     width: min(100% - 2rem, 1440px);
     margin: 0 auto;
     pointer-events: none;
@@ -728,6 +761,26 @@ body.pagelayout-mydashboard .block_settings {
     background: #fff;
 }
 
+.ec-stat-card.ec-stat-green {
+    border-color: #d2e9dc;
+    background: #f0f8f3;
+}
+
+.ec-stat-card.ec-stat-blue {
+    border-color: #d8e3f6;
+    background: #f1f5fc;
+}
+
+.ec-stat-card.ec-stat-orange {
+    border-color: #f1dfc8;
+    background: #fff7ed;
+}
+
+.ec-stat-card.ec-stat-purple {
+    border-color: #e3dcf2;
+    background: #f7f4fb;
+}
+
 .ec-stat-icon {
     width: 1.4rem;
     height: 1.4rem;
@@ -845,6 +898,11 @@ body.pagelayout-mydashboard .block_settings {
     font-weight: 650;
     text-decoration: underline;
     text-underline-offset: .12em;
+}
+
+.ec-view-all-courses {
+    display: inline-flex;
+    margin-top: .8rem;
 }
 
 .ec-course-action {
@@ -1257,7 +1315,7 @@ body.pagelayout-mydashboard .block_settings {
 [data-region="right-hand-drawer"].drawer {
     top: calc(var(--ec-masthead-height) + var(--ec-navigation-height)) !important;
     height: calc(100vh - var(--ec-masthead-height) - var(--ec-navigation-height)) !important;
-    z-index: 1020;
+    z-index: 1025;
 }
 
 .drawer-toggles .drawer-toggler {
@@ -1422,6 +1480,209 @@ a,
 
     .pagelayout-frontpage .course_category_tree .courses {
         grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+// The Boost layout normally reserves horizontal space for its right drawer by
+// adding margins to both body and #page. Keep the dashboard canvas invariant;
+// the native drawer is an overlay here, so opening it cannot resize the page.
+@media (min-width: 768px) {
+    body.pagelayout-mydashboard.drawer-open-right {
+        margin-right: 0 !important;
+        transition: none !important;
+    }
+
+    body.pagelayout-mydashboard #page.drawers.show-drawer-right {
+        margin-right: 0 !important;
+        transition: none !important;
+    }
+}
+
+body.pagelayout-mydashboard #page.drawers .main-inner {
+    box-sizing: border-box;
+    width: min(100% - 2rem, 1600px);
+    max-width: 1600px;
+    min-width: 0;
+}
+
+body.pagelayout-mydashboard #page-content,
+body.pagelayout-mydashboard #region-main-box,
+body.pagelayout-mydashboard #region-main,
+body.pagelayout-mydashboard [data-blockregion] {
+    min-width: 0;
+    max-width: 100%;
+}
+
+body.pagelayout-mydashboard .ec-dashboard-panel,
+body.pagelayout-mydashboard .ec-dashboard-columns,
+body.pagelayout-mydashboard .ec-dashboard-stats,
+body.pagelayout-mydashboard .ec-course-grid,
+body.pagelayout-mydashboard .block {
+    min-width: 0;
+}
+
+body.pagelayout-mydashboard .ec-dashboard-columns {
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, .9fr);
+}
+
+// Move only the toggle control into the existing dashboard action row. The
+// native data-toggler/data-target attributes and close button remain intact.
+body.pagelayout-mydashboard .ec-dashboard-header-actions {
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+body.pagelayout-mydashboard .ec-dashboard-header-actions .drawer-right-toggle {
+    position: static !important;
+    inset: auto !important;
+    z-index: auto;
+    display: block;
+    transform: none !important;
+    visibility: visible !important;
+}
+
+body.pagelayout-mydashboard .ec-dashboard-header-actions .drawer-right-toggle .btn {
+    box-sizing: border-box;
+    width: 2.375rem;
+    height: 2.375rem;
+    padding: .45rem;
+    border: 1px solid $ec-border;
+    border-radius: $ec-radius-sm;
+    background: #fff;
+}
+
+body.pagelayout-mydashboard .ec-dashboard-header-actions .drawer-right-toggle .btn:focus-visible {
+    outline: 3px solid $ec-blue;
+    outline-offset: 2px;
+}
+
+body.pagelayout-mydashboard:has(#page.drawers.show-drawer-right) .ec-dashboard-header-actions .drawer-right-toggle {
+    display: none;
+}
+
+// Dashboard blocks use the same quiet card treatment as the custom dashboard
+// panels while retaining Moodle's native block header and controls.
+body.pagelayout-mydashboard .drawer.drawer-right {
+    position: fixed !important;
+    inset: calc(var(--ec-masthead-height) + var(--ec-navigation-height)) 0 0 auto !important;
+    box-sizing: border-box;
+    width: min(340px, calc(100vw - 1rem)) !important;
+    min-width: 0;
+    max-width: min(340px, calc(100vw - 1rem)) !important;
+    height: calc(100vh - var(--ec-masthead-height) - var(--ec-navigation-height)) !important;
+    max-height: none;
+    overflow: hidden;
+    clip-path: none !important;
+    border-left: 1px solid $ec-border;
+    border-radius: 0;
+    background: #f8faf9;
+    box-shadow: -10px 0 28px rgba(17, 17, 17, .13);
+    transform: translateX(calc(100% + 1px));
+    transition: transform .2s ease, visibility 0s linear .2s !important;
+    z-index: 1025;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right.show {
+    left: auto !important;
+    right: 0 !important;
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform .2s ease !important;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right:not(.show) {
+    visibility: hidden;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .drawerheader {
+    flex: 0 0 auto;
+    padding: .75rem 1rem;
+    border-bottom: 1px solid $ec-border;
+    background: #fff;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .drawerheading,
+body.pagelayout-mydashboard .drawer.drawer-right .block-header {
+    color: $ec-text;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .drawercontent {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .block {
+    margin: 0 0 .85rem;
+    padding: .9rem;
+    border: 1px solid $ec-border;
+    border-radius: $ec-radius-md;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(17, 17, 17, .045);
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .block .card-body,
+body.pagelayout-mydashboard .drawer.drawer-right .block .content {
+    min-width: 0;
+    padding: 0;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .block .block-header,
+body.pagelayout-mydashboard .drawer.drawer-right .block h3,
+body.pagelayout-mydashboard .drawer.drawer-right .block .h3 {
+    margin-bottom: .65rem;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .block_calendar_month .maincalendar,
+body.pagelayout-mydashboard .drawer.drawer-right .block_calendar_month .calendar-controls,
+body.pagelayout-mydashboard .drawer.drawer-right .block_calendar_upcoming .event,
+body.pagelayout-mydashboard .drawer.drawer-right .block_recentlyaccesseditems .content {
+    min-width: 0;
+    max-width: 100%;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .block_calendar_month table {
+    width: 100%;
+    table-layout: fixed;
+    font-size: .68rem;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .block_calendar_month th,
+body.pagelayout-mydashboard .drawer.drawer-right .block_calendar_month td {
+    padding: .2rem .05rem;
+    white-space: nowrap;
+}
+
+body.pagelayout-mydashboard .drawer.drawer-right .block_navigation,
+body.pagelayout-mydashboard .drawer.drawer-right .block_settings {
+    display: block;
+}
+
+@media (max-width: 767.98px) {
+    body.pagelayout-mydashboard #page.drawers .main-inner {
+        width: calc(100% - 1rem);
+    }
+
+    body.pagelayout-mydashboard .ec-dashboard-columns {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    body.pagelayout-mydashboard .drawer.drawer-right {
+        width: min(340px, calc(100vw - 1rem)) !important;
+        max-width: calc(100vw - 1rem) !important;
+        z-index: 1025;
+    }
+
+    body.pagelayout-mydashboard .ec-dashboard-header-actions {
+        width: 100%;
+        justify-content: flex-end;
     }
 }
 

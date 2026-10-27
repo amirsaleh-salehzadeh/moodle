@@ -25,45 +25,18 @@ export const init = () => {
             button.setAttribute('tabindex', '-1');
         });
         navigation.querySelectorAll('.ec-mega-panel').forEach(panel => panel.classList.remove('active', 'show'));
-        try {
-            window.localStorage.setItem('theme_echealth_navigation_active_section', '');
-        } catch (error) {
-            // Closing the panel must keep working when storage is unavailable.
-        }
     };
     const hasHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
     navigations.forEach(navigation => {
         const buttons = Array.from(navigation.querySelectorAll('.ec-mega-trigger'));
-        const hascurrentpage = navigation.querySelector('.ec-mega-panel a[aria-current="page"]') !== null;
-        let remembered;
-        try {
-            remembered = window.localStorage.getItem('theme_echealth_navigation_active_section');
-        } catch (error) {
-            // Use the server-provided active state when storage is unavailable.
-        }
         buttons.forEach(button => {
             button.addEventListener('pointerenter', event => {
                 if (hasHover && event.pointerType === 'mouse' && !button.classList.contains('active')) {
                     Tab.getOrCreateInstance(button).show();
                 }
             });
-            button.addEventListener('shown.bs.tab', () => {
-                const section = Array.from(button.classList).find(name => name.startsWith('ec-nav-group--'))?.replace('ec-nav-group--', '');
-                try {
-                    window.localStorage.setItem('theme_echealth_navigation_active_section', section || '');
-                } catch (error) {
-                    // Bootstrap tab interaction remains available when storage is disabled.
-                }
-            });
         });
-
-        if (!hascurrentpage && remembered) {
-            const rememberedbutton = buttons.find(button => button.classList.contains(`ec-nav-group--${remembered}`));
-            if (rememberedbutton && !rememberedbutton.classList.contains('active')) {
-                rememberedbutton.click();
-            }
-        }
 
         positionPanel(navigation);
         navigation.addEventListener('pointerleave', event => {
@@ -131,6 +104,17 @@ export const init = () => {
             });
         }
     });
+
+    const blockdrawer = document.getElementById('theme_boost-drawers-blocks');
+    if (blockdrawer) {
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape' || !blockdrawer.classList.contains('show')) {
+                return;
+            }
+            event.preventDefault();
+            Drawers.getDrawerInstanceForNode(blockdrawer).closeDrawer();
+        });
+    }
 
     const drawer = document.getElementById('theme_boost-drawers-primary');
     const toggle = document.querySelector('[data-target="theme_boost-drawers-primary"][data-action="toggle"]');

@@ -15,6 +15,12 @@ $THEME->parents = ['boost'];
 $THEME->sheets = [];
 $THEME->editor_sheets = [];
 $THEME->rendererfactory = 'theme_overridden_renderer_factory';
+$THEME->layouts['mydashboard'] = [
+    'file' => 'drawers_dashboard.php',
+    'regions' => ['side-post'],
+    'defaultregion' => 'side-post',
+    'options' => ['nonavbar' => true, 'langmenu' => true],
+];
 $THEME->scss = function($theme) {
     return theme_boost_get_main_scss_content($theme) . "\n" . file_get_contents(__DIR__ . '/scss/echealth.scss');
 };
