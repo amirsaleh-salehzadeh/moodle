@@ -1,0 +1,10 @@
+{{!
+    Accessible selectable course card shared by the guided activity creation views.
+}}
+<label class="ec-course-selector-card" for="{{inputid}}">
+    <input id="{{inputid}}" type="radio" name="selectedcourse" value="{{courseid}}" required>
+    <span class="ec-course-selector-content">
+        <strong class="ec-course-selector-name">{{fullname}}</strong>
+        <span class="ec-course-selector-meta">{{categoryname}} <span aria-hidden="true">·</span> {{shortname}}</span>
+    </span>
+</label>

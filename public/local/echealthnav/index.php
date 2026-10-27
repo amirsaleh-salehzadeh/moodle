@@ -6,7 +6,17 @@ require_once($CFG->libdir . '/tablelib.php');
 $view = optional_param('view', 'courses', PARAM_ALPHANUMEXT);
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 $focus = optional_param('focus', '', PARAM_ALPHANUMEXT);
-$courseid = optional_param('courseid', 0, PARAM_INT);
+$selectedcourseid = optional_param('selectedcourse', 0, PARAM_INT);
+$categoryid = optional_param('category', 0, PARAM_INT);
+$query = optional_param('q', '', PARAM_TEXT);
+$filtercourse = optional_param('filtercourse', 0, PARAM_INT);
+$filterstatus = optional_param('status', '', PARAM_ALPHA);
+$sort = optional_param('sort', 'title', PARAM_ALPHA);
+$direction = optional_param('dir', 'asc', PARAM_ALPHA);
+$perpage = optional_param('perpage', 25, PARAM_INT);
+$pageindex = optional_param('p', 0, PARAM_INT);
+$perpage = in_array($perpage, [10, 25, 50, 100], true) ? $perpage : 25;
+$direction = $direction === 'desc' ? 'desc' : 'asc';
 $systemcontext = context_system::instance();
 $pageparams = ['view' => $view];
 if ($focus !== '') {
@@ -14,7 +24,8 @@ if ($focus !== '') {
 }
 $PAGE->set_url(new moodle_url('/local/echealthnav/index.php', $pageparams));
 $PAGE->set_context($systemcontext);
-$PAGE->set_pagelayout('standard');
+$PAGE->set_pagelayout('report');
+$PAGE->add_body_class('ec-management-page');
 
 require_login();
 $titles = [
@@ -28,7 +39,8 @@ if (!isset($titles[$view])) {
 }
 
 $canadmin = has_capability('moodle/site:config', $systemcontext);
-$courses = $canadmin ? get_courses('all', 'c.sortorder ASC', 'c.id, c.fullname, c.visible, c.category') : enrol_get_my_courses('id, fullname, visible, category', 'sortorder ASC');
+$iscourseselector = in_array($view, ['createquiz', 'createassign'], true);
+$courses = $iscourseselector ? [] : ($canadmin ? get_courses('all', 'c.sortorder ASC', 'c.id, c.fullname, c.shortname, c.visible, c.category') : enrol_get_my_courses('id, fullname, shortname, visible, category', 'sortorder ASC'));
 $courses = array_filter($courses, static function($course) {
     return (int)$course->id !== SITEID;
 });
@@ -48,34 +60,203 @@ $courseurl = static function($course, $target) {
     return new moodle_url('/course/view.php', ['id' => $course->id, 'ecnav' => $target]);
 };
 
+// Continue from the course selection only after a CSRF check and a fresh capability check.
+if (in_array($view, ['createquiz', 'createassign'], true) && $selectedcourseid && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    require_sesskey();
+    $module = $view === 'createquiz' ? 'quiz' : 'assign';
+    $selectedcourse = get_course($selectedcourseid);
+    require_login($selectedcourse);
+    require_capability('mod/' . $module . ':addinstance', context_course::instance($selectedcourseid));
+    redirect(new moodle_url('/course/modedit.php', ['add' => $module, 'course' => $selectedcourseid, 'section' => 0]));
+}
+
 $PAGE->set_title($titles[$view]);
 $PAGE->set_heading($titles[$view]);
 $PAGE->navbar->add($titles[$view]);
 echo $OUTPUT->header();
-echo $OUTPUT->heading($titles[$view]);
+
+$descriptions = [
+    'learners' => 'Find learners in courses you are authorised to manage.',
+    'exams' => 'Review quizzes and assessments available in your courses.',
+    'assignments' => 'Review assignment activities and open their native grading pages.',
+    'attendance' => 'Open attendance activities and authorised reports.',
+    'reports' => 'Find Moodle reports available for your courses and role.',
+    'certificates' => 'Review certificate activities available to your account.',
+    'courses' => 'Browse courses you can access and open their Moodle course pages.',
+    'createquiz' => 'Choose a course where you have permission to create a Quiz. Moodle will open the native Quiz settings form next.',
+    'createassign' => 'Choose a course where you have permission to create an Assignment.',
+    'communication' => 'Open communication tools available to your account.',
+    'enrolments' => 'Manage enrolment settings for courses where you have permission.',
+];
+$primaryaction = null;
+if ($view === 'exams' || $view === 'assignments') {
+    $module = $view === 'exams' ? 'quiz' : 'assign';
+    foreach ($courses as $candidatecourse) {
+        if ($coursecaps($candidatecourse, ['mod/' . $module . ':addinstance'])) {
+            $primaryaction = [
+                'url' => (new moodle_url('/local/echealthnav/index.php', ['view' => $view === 'exams' ? 'createquiz' : 'createassign']))->out(false),
+                'label' => $view === 'exams' ? 'Create Exam' : 'Create Assignment',
+            ];
+            break;
+        }
+    }
+}
+echo $OUTPUT->render_from_template('local_echealthnav/page_intro', [
+    'description' => $descriptions[$view],
+    'primaryaction' => $primaryaction,
+]);
+
+// Shared server-side search, filters, sorting and pagination for portal listings.
+$renderlisting = static function(array $htmlrows, array $courseoptions, string $title) use (
+    $OUTPUT, $view, $focus, $query, $filtercourse, $filterstatus, $sort, $direction, $perpage, $pageindex
+): void {
+    $filtered = array_values(array_filter($htmlrows, static function($row) use ($query, $filtercourse, $filterstatus, $courseoptions) {
+        $plain = html_entity_decode(strip_tags($row), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if ($query !== '' && stripos($plain, $query) === false) {
+            return false;
+        }
+        $selectedcourse = isset($courseoptions[$filtercourse]) ? html_entity_decode(strip_tags($courseoptions[$filtercourse]), ENT_QUOTES | ENT_HTML5, 'UTF-8') : '';
+        if ($filtercourse && $selectedcourse !== '' && stripos($plain, $selectedcourse) === false) {
+            return false;
+        }
+        if ($filterstatus !== '' && stripos($plain, $filterstatus) === false) {
+            return false;
+        }
+        return true;
+    }));
+    usort($filtered, static function($a, $b) use ($direction, $sort) {
+        preg_match_all('~<td\b[^>]*>(.*?)</td>~is', $a, $leftcells);
+        preg_match_all('~<td\b[^>]*>(.*?)</td>~is', $b, $rightcells);
+        $column = $sort === 'course' && count($leftcells[1]) > 1 ? 1 : 0;
+        $left = html_entity_decode(strip_tags($leftcells[1][$column] ?? $a), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $right = html_entity_decode(strip_tags($rightcells[1][$column] ?? $b), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $result = strnatcasecmp($left, $right);
+        return $direction === 'desc' ? -$result : $result;
+    });
+    $total = count($filtered);
+    $lastpage = max(0, (int)ceil($total / $perpage) - 1);
+    $currentpage = min(max(0, $pageindex), $lastpage);
+    $params = ['view' => $view, 'q' => $query, 'filtercourse' => $filtercourse, 'status' => $filterstatus,
+        'sort' => $sort, 'dir' => $direction, 'perpage' => $perpage];
+    $url = new moodle_url('/local/echealthnav/index.php', $params);
+    $formaction = new moodle_url('/local/echealthnav/index.php', ['view' => $view, 'focus' => $focus]);
+    $form = html_writer::start_tag('form', ['method' => 'get', 'action' => $formaction->out(false), 'class' => 'ec-page-toolbar ec-listing-filters mb-3']);
+    $form .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'view', 'value' => $view]);
+    if ($focus !== '') {
+        $form .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'focus', 'value' => $focus]);
+    }
+    $form .= html_writer::label('Search', 'ec-search', false, ['class' => 'visually-hidden']);
+    $form .= html_writer::empty_tag('input', ['id' => 'ec-search', 'type' => 'search', 'name' => 'q', 'value' => $query,
+        'class' => 'form-control', 'placeholder' => 'Search ' . strtolower($title)]);
+    if ($courseoptions) {
+        $options = [0 => 'All courses'] + $courseoptions;
+        $form .= html_writer::select($options, 'filtercourse', $filtercourse, false, ['class' => 'form-select', 'aria-label' => 'Filter by course']);
+    }
+    if (in_array($view, ['courses', 'exams', 'assignments', 'attendance'], true)) {
+        $form .= html_writer::select(['' => 'All statuses', 'visible' => 'Visible', 'hidden' => 'Hidden'],
+            'status', $filterstatus, false, ['class' => 'form-select', 'aria-label' => 'Filter by status']);
+    }
+    $form .= html_writer::select(['title' => 'Sort by title', 'course' => 'Sort by course'],
+        'sort', $sort, false, ['class' => 'form-select', 'aria-label' => 'Sort results']);
+    $form .= html_writer::select(['asc' => 'Ascending', 'desc' => 'Descending'],
+        'dir', $direction, false, ['class' => 'form-select', 'aria-label' => 'Sort direction']);
+    $form .= html_writer::select([10 => '10 per page', 25 => '25 per page', 50 => '50 per page', 100 => '100 per page'],
+        'perpage', $perpage, false, ['class' => 'form-select', 'aria-label' => 'Results per page']);
+    $form .= html_writer::tag('button', 'Apply', ['type' => 'submit', 'class' => 'btn btn-primary']);
+    if ($query !== '' || $filtercourse || $filterstatus !== '') {
+        $form .= html_writer::link(new moodle_url('/local/echealthnav/index.php', ['view' => $view, 'focus' => $focus]),
+            'Clear filters', ['class' => 'btn btn-outline-secondary']);
+    }
+    $form .= html_writer::end_tag('form');
+    echo $form;
+    echo html_writer::div('Showing ' . ($total ? ($currentpage * $perpage + 1) . '–' . min($total, ($currentpage + 1) * $perpage) : '0') . ' of ' . $total . ' results', 'text-muted small mb-2');
+    if ($total) {
+        $headers = match ($view) {
+            'learners' => ['Learner', 'Course'],
+            'createquiz', 'createassign', 'enrolments' => ['Course'],
+            'courses' => ['Course', 'Visibility', 'Type'],
+            'reports' => ['Report', 'Course', 'Type', 'Actions'],
+            'exams', 'assignments', 'attendance', 'certificates' => ['Activity', 'Course', 'Type', 'Visibility', 'Actions'],
+            default => ['Activity', 'Course', 'Type', 'Actions'],
+        };
+        $head = html_writer::tag('thead', html_writer::tag('tr', implode('', array_map(static fn($label) => html_writer::tag('th', $label, ['scope' => 'col']), $headers))));
+        $table = html_writer::tag('table', $head . html_writer::tag('tbody', implode('', array_slice($filtered, $currentpage * $perpage, $perpage))), ['class' => 'generaltable']);
+        echo html_writer::div($table, 'table-responsive');
+        echo $OUTPUT->paging_bar($total, $currentpage, $perpage, $url, 'p');
+    } else {
+        echo $OUTPUT->notification('No matching items are available. Try changing your search or filters.', 'info');
+    }
+};
+$courseoptions = [];
+foreach ($courses as $optioncourse) {
+    if ((int)$optioncourse->id !== SITEID) {
+        $courseoptions[$optioncourse->id] = format_string($optioncourse->fullname);
+    }
+}
 
 if ($view === 'createquiz' || $view === 'createassign') {
     $module = $view === 'createquiz' ? 'quiz' : 'assign';
     $capability = 'mod/' . $module . ':addinstance';
-    if ($courseid) {
-        $course = get_course($courseid);
-        require_login($course);
-        require_capability($capability, context_course::instance($courseid));
-        redirect(new moodle_url('/course/modedit.php', ['add' => $module, 'course' => $courseid, 'section' => 0]));
+    $categoryoptions = core_course_category::make_categories_list();
+    $searchconditions = [];
+    $searchparams = [];
+    if ($categoryid && array_key_exists($categoryid, $categoryoptions)) {
+        $searchconditions[] = 'c.category = :ec_category';
+        $searchparams['ec_category'] = $categoryid;
     }
-    $items = [];
-    foreach ($courses as $course) {
-        if ((int)$course->id === SITEID) {
-            continue;
-        }
-        if (!$coursecaps($course, [$capability])) {
-            continue;
-        }
-        $items[] = html_writer::tag('li', html_writer::link(
-            new moodle_url('/local/echealthnav/index.php', ['view' => $view, 'courseid' => $course->id]),
-            format_string($course->fullname)));
+    $searchterms = $query === '' ? [] : preg_split('/\s+/', trim($query), -1, PREG_SPLIT_NO_EMPTY);
+    $totalcourses = 0;
+    $currentcoursepage = max(0, $pageindex);
+    $eligiblecourses = get_courses_search($searchterms, 'c.fullname ASC', $currentcoursepage, $perpage,
+        $totalcourses, [$capability], $searchconditions, $searchparams);
+    $selectorurl = new moodle_url('/local/echealthnav/index.php', ['view' => $view]);
+    $filterform = html_writer::start_tag('form', ['method' => 'get', 'action' => $selectorurl->out(false), 'class' => 'ec-page-toolbar']);
+    $filterform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'view', 'value' => $view]);
+    $filterform .= html_writer::label('Search courses', 'ec-course-search', false, ['class' => 'visually-hidden']);
+    $filterform .= html_writer::empty_tag('input', ['id' => 'ec-course-search', 'type' => 'search', 'name' => 'q', 'value' => $query,
+        'class' => 'form-control ec-search-field', 'placeholder' => 'Search course name or code']);
+    if ($categoryoptions) {
+        $filterform .= html_writer::select([0 => 'All categories'] + $categoryoptions, 'category', $categoryid, false,
+            ['class' => 'form-select', 'aria-label' => 'Filter by course category']);
     }
-    echo $items ? html_writer::tag('ul', implode('', $items)) : $OUTPUT->notification(get_string('nocourses', 'theme_echealth'), 'info');
+    $filterform .= html_writer::select([10 => '10 per page', 25 => '25 per page', 50 => '50 per page', 100 => '100 per page'], 'perpage', $perpage, false,
+        ['class' => 'form-select', 'aria-label' => 'Courses per page']);
+    $filterform .= html_writer::tag('button', 'Search', ['type' => 'submit', 'class' => 'btn btn-primary']);
+    if ($query !== '' || $categoryid) {
+        $filterform .= html_writer::link(new moodle_url('/local/echealthnav/index.php', ['view' => $view]), 'Clear filters', ['class' => 'btn btn-outline-secondary']);
+    }
+    $filterform .= html_writer::end_tag('form');
+    echo $filterform;
+    echo html_writer::div('Step 1 of 2 · Select a course', 'ec-workflow-step');
+    echo html_writer::div('Showing ' . ($totalcourses ? ($currentcoursepage * $perpage + 1) . '–' . min($totalcourses, ($currentcoursepage + 1) * $perpage) : '0') . ' of ' . $totalcourses . ' courses', 'text-muted small mb-2');
+    if ($totalcourses) {
+        $cardform = html_writer::start_tag('form', ['method' => 'post', 'action' => $selectorurl->out(false)]);
+        $cardform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'view', 'value' => $view]);
+        $cardform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        $cardform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'q', 'value' => $query]);
+        $cardform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'category', 'value' => $categoryid]);
+        $cardform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'perpage', 'value' => $perpage]);
+        $cardform .= html_writer::start_div('ec-course-selector-grid');
+        foreach ($eligiblecourses as $course) {
+            $category = !empty($course->category) ? core_course_category::get($course->category, IGNORE_MISSING) : null;
+            $cardform .= $OUTPUT->render_from_template('local_echealthnav/course_selector_card', [
+                'inputid' => 'course-' . $course->id,
+                'courseid' => $course->id,
+                'fullname' => format_string($course->fullname),
+                'categoryname' => $category ? format_string($category->name) : 'Uncategorised',
+                'shortname' => format_string($course->shortname ?? ''),
+            ]);
+        }
+        $cardform .= html_writer::end_div();
+        $cardform .= html_writer::tag('button', 'Continue', ['type' => 'submit', 'class' => 'btn btn-primary mt-3']);
+        $cardform .= html_writer::end_tag('form');
+        echo $cardform;
+        echo $OUTPUT->paging_bar($totalcourses, $currentcoursepage, $perpage, new moodle_url('/local/echealthnav/index.php', [
+            'view' => $view, 'q' => $query, 'category' => $categoryid, 'perpage' => $perpage,
+        ]), 'p');
+    } else {
+        echo html_writer::div('No courses are available for this activity with your current permissions or filters.', 'ec-empty-state alert alert-info');
+    }
 } else if ($view === 'learners') {
     $seen = [];
     $rows = [];
@@ -109,12 +290,7 @@ if ($view === 'createquiz' || $view === 'createassign') {
                 html_writer::tag('td', format_string($course->fullname)));
         }
     }
-    if ($rows) {
-        echo html_writer::tag('table', html_writer::tag('thead', html_writer::tag('tr', html_writer::tag('th', 'Learner') . html_writer::tag('th', 'Course'))) .
-            html_writer::tag('tbody', implode('', $rows)), ['class' => 'generaltable']);
-    } else {
-        echo $OUTPUT->notification('No learners are available in courses you can manage.', 'info');
-    }
+    $renderlisting($rows, $courseoptions, 'learners');
 } else if ($view === 'enrolments') {
     $items = [];
     foreach ($courses as $course) {
@@ -122,10 +298,10 @@ if ($view === 'createquiz' || $view === 'createassign') {
             continue;
         }
         if ($canadmin || has_capability('moodle/course:enrolreview', context_course::instance($course->id))) {
-            $items[] = html_writer::tag('li', html_writer::link(new moodle_url('/enrol/instances.php', ['id' => $course->id]), format_string($course->fullname)));
+            $items[] = html_writer::tag('tr', html_writer::tag('td', html_writer::link(new moodle_url('/enrol/instances.php', ['id' => $course->id]), format_string($course->fullname))));
         }
     }
-    echo $items ? html_writer::tag('ul', implode('', $items)) : $OUTPUT->notification('No enrolment settings are available for your courses.', 'info');
+    $renderlisting($items, $courseoptions, 'enrolments');
 } else {
     if ($view === 'certificates' && isset(core_component::get_plugin_list('mod')['customcert'])) {
         redirect(new moodle_url('/mod/customcert/my_certificates.php'));
@@ -152,6 +328,7 @@ if ($view === 'createquiz' || $view === 'createassign') {
                         continue;
                     }
                     $activitylink = html_writer::link($cm->url, format_string($cm->name));
+                    $visibility = $cm->visible ? 'Visible' : 'Hidden';
                     $actions = [];
                     if ($modname === 'quiz') {
                         if (has_capability('mod/quiz:attempt', $modulecontext)) {
@@ -173,6 +350,7 @@ if ($view === 'createquiz' || $view === 'createassign') {
                     $rows[] = html_writer::tag('tr', html_writer::tag('td', $activitylink) .
                         html_writer::tag('td', html_writer::link(new moodle_url('/course/view.php', ['id' => $course->id]), format_string($course->fullname))) .
                         html_writer::tag('td', s(get_string('pluginname', 'mod_' . $modname))) .
+                        html_writer::tag('td', $visibility) .
                         html_writer::tag('td', implode(' · ', $actions)));
                 }
             }
@@ -224,11 +402,6 @@ if ($view === 'createquiz' || $view === 'createassign') {
                 html_writer::tag('td', $course->visible ? 'Visible' : 'Hidden') . html_writer::tag('td', 'Course'));
         }
     }
-    if ($rows) {
-        echo html_writer::tag('table', html_writer::tag('thead', html_writer::tag('tr', html_writer::tag('th', 'Activity') . html_writer::tag('th', 'Course') . html_writer::tag('th', 'Type') . html_writer::tag('th', 'Actions'))) .
-            html_writer::tag('tbody', implode('', $rows)), ['class' => 'generaltable']);
-    } else {
-        echo $OUTPUT->notification('No matching items are available for your account.', 'info');
-    }
+    $renderlisting($rows, $courseoptions, $titles[$view]);
 }
 echo $OUTPUT->footer();

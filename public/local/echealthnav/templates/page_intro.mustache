@@ -1,0 +1,10 @@
+{{!
+    Shared introductory region for Eastern Cape Health management pages.
+    Moodle renders the page title and breadcrumb in its native page header.
+}}
+<section class="ec-admin-page-intro" aria-label="Page introduction">
+    <p class="ec-admin-page-description">{{description}}</p>
+    {{#primaryaction}}
+        <a class="btn btn-primary ec-admin-primary-action" href="{{url}}">{{label}}</a>
+    {{/primaryaction}}
+</section>

@@ -812,6 +812,144 @@ body.pagelayout-mydashboard .block_settings {
     }
 }
 
+.ec-management-page {
+    .ec-admin-page-intro {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin: 0 0 1.25rem;
+    }
+
+    .ec-admin-page-description {
+        max-width: 68ch;
+        margin: 0;
+        color: $ec-muted;
+    }
+
+    .ec-page-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: .65rem;
+        padding: .85rem;
+        border: 1px solid $ec-border;
+        border-radius: $ec-radius-md;
+        background: #fff;
+    }
+
+    .ec-page-toolbar .form-control,
+    .ec-page-toolbar .form-select {
+        width: auto;
+        min-width: 10rem;
+        flex: 0 1 14rem;
+    }
+
+    .ec-page-toolbar .ec-search-field {
+        min-width: min(100%, 20rem);
+        flex-basis: 24rem;
+    }
+
+    .ec-workflow-step {
+        margin: 1.25rem 0 .65rem;
+        color: $ec-green-dark;
+        font-size: .9rem;
+        font-weight: 700;
+    }
+
+    .ec-course-selector-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+        gap: .75rem;
+    }
+
+    .ec-course-selector-card {
+        display: flex;
+        min-height: 5.5rem;
+        align-items: flex-start;
+        gap: .8rem;
+        margin: 0;
+        padding: 1rem;
+        border: 1px solid $ec-border;
+        border-radius: $ec-radius-md;
+        background: #fff;
+        cursor: pointer;
+    }
+
+    .ec-course-selector-card:hover,
+    .ec-course-selector-card:focus-within {
+        border-color: $ec-green;
+        box-shadow: 0 0 0 3px rgba(8, 124, 74, .12);
+    }
+
+    .ec-course-selector-card:has(input:checked) {
+        border-color: $ec-green;
+        background: #f1f8f4;
+        box-shadow: inset 3px 0 0 $ec-green;
+    }
+
+    .ec-course-selector-card input {
+        margin-top: .25rem;
+        accent-color: $ec-green;
+    }
+
+    .ec-course-selector-content {
+        display: grid;
+        gap: .35rem;
+        min-width: 0;
+    }
+
+    .ec-course-selector-name {
+        color: $ec-charcoal;
+        overflow-wrap: anywhere;
+    }
+
+    .ec-course-selector-meta {
+        color: $ec-muted;
+        font-size: .82rem;
+    }
+
+    .generaltable {
+        width: 100%;
+        margin-bottom: 0;
+        background: #fff;
+    }
+
+    .table-responsive {
+        margin-bottom: 1rem;
+        border: 1px solid $ec-border;
+        border-radius: $ec-radius-md;
+    }
+
+    .generaltable thead th {
+        color: $ec-charcoal;
+        background: #f4f8f5;
+        white-space: nowrap;
+    }
+
+    .generaltable tbody tr:hover {
+        background: #f8fbf9;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .ec-management-page {
+        .ec-admin-page-intro {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .ec-page-toolbar,
+        .ec-page-toolbar .form-control,
+        .ec-page-toolbar .form-select,
+        .ec-page-toolbar .ec-search-field {
+            width: 100%;
+            min-width: 0;
+            flex-basis: 100%;
+        }
+    }
+}
+
 // The site catalogue remains backed by Moodle's native category tree and
 // links, presented as campus panels with responsive course cards.
 .pagelayout-frontpage .course_category_tree > .content > .subcategories {
