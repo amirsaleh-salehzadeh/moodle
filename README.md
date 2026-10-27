@@ -46,3 +46,48 @@ Moodle is provided freely as open source software, under version 3 of the GNU Ge
 [10]: https://moodle.com/partners
 [11]: https://moodle.com/cloud
 [12]: https://moodledev.io/general/license
+
+## Docker deployment on Ubuntu
+
+This checkout includes a Docker Compose setup for the Moodle 5.3 source tree. It runs Apache/PHP and MariaDB in separate containers. Keep the `.env` file and database backups private.
+
+### 1. Prepare Ubuntu
+
+Install Docker Engine and the Docker Compose plugin from Docker's official Ubuntu instructions. Then clone this repository (use a GitHub deploy key or other read-only credential if it is private):
+
+```sh
+git clone https://github.com/amirsaleh-salehzadeh/moodle.git
+cd moodle
+cp .env.example .env
+```
+
+Edit `.env`. Set strong, different passwords for `MOODLE_DB_PASSWORD` and `MARIADB_ROOT_PASSWORD`, and set `MOODLE_WWWROOT` to the final URL, such as `https://learn.example.org`. Set `MOODLE_DB_NAME` to `moodle_local_20261026` when restoring the supplied local database dump. Do not commit `.env`.
+
+### 2. Copy and restore the database
+
+Transfer the SQL dump from `backups/` to the server with a secure file transfer method, for example `scp`. Start MariaDB first, then import the dump:
+
+```sh
+docker compose up -d db
+docker compose exec -T db sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"' < backups/moodle-db-YYYYMMDD-HHMMSS.sql
+```
+
+Replace the example filename with the transferred dump's actual name. The import creates the database named inside the dump, so `MOODLE_DB_NAME` must match it. Back up and transfer the Moodle data directory separately if you need uploaded course files; a SQL dump alone does not contain those files.
+
+### 3. Start Moodle
+
+```sh
+docker compose up -d --build
+docker compose logs -f moodle
+```
+
+The site listens on port 8080 by default. Put a TLS reverse proxy such as Caddy or Nginx in front for a public deployment, expose only the proxy's HTTPS port, and configure `.env` with `MOODLE_REVERSE_PROXY=true` and `MOODLE_SSL_PROXY=true` when the proxy terminates HTTPS. Set `MOODLE_WWWROOT` to the public HTTPS URL before first boot.
+
+The imported database may contain the old `localhost:8080` URL. After the site starts, run Moodle's URL replacement command (update the old URL and domain to match your actual database and site URL):
+
+```sh
+docker compose exec moodle php admin/cli/replace.php --search='http://localhost:8080' --replace='https://learn.example.org'
+docker compose exec moodle php admin/cli/purge_caches.php
+```
+
+Keep `dbdata` and `moodledata` volumes, `.env`, and off-server backups in your backup plan. For updates, pull the intended Git revision and rebuild with `docker compose up -d --build`; take database and Moodle data backups first.

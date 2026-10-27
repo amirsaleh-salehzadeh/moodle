@@ -15,6 +15,7 @@ $sort = optional_param('sort', 'title', PARAM_ALPHA);
 $direction = optional_param('dir', 'asc', PARAM_ALPHA);
 $perpage = optional_param('perpage', 25, PARAM_INT);
 $pageindex = optional_param('p', 0, PARAM_INT);
+$teacherid = optional_param('teacherid', 0, PARAM_INT);
 $perpage = in_array($perpage, [10, 25, 50, 100], true) ? $perpage : 25;
 $direction = $direction === 'desc' ? 'desc' : 'asc';
 $systemcontext = context_system::instance();
@@ -29,7 +30,7 @@ $PAGE->add_body_class('ec-management-page');
 
 require_login();
 $titles = [
-    'learners' => 'Learner Management', 'exams' => 'Exams & Assessments',
+    'learners' => 'Learner Management', 'teachers' => 'Teachers & Clinical Educators', 'exams' => 'Exams & Assessments',
     'assignments' => 'Assignments', 'attendance' => 'Attendance', 'reports' => 'Reports & Analytics',
     'certificates' => 'Certificates', 'courses' => 'Courses & Subjects', 'createquiz' => 'Create Exam',
     'createassign' => 'Create Assignment', 'communication' => 'Communication', 'enrolments' => 'Enrolments',
@@ -39,6 +40,14 @@ if (!isset($titles[$view])) {
 }
 
 $canadmin = has_capability('moodle/site:config', $systemcontext);
+$canmanageteachers = $canadmin || has_capability('moodle/user:viewdetails', $systemcontext) &&
+    (has_capability('moodle/user:create', $systemcontext) || has_capability('moodle/user:update', $systemcontext));
+if ($view === 'teachers') {
+    require_capability('moodle/user:viewdetails', $systemcontext);
+    if (!$canmanageteachers) {
+        throw new required_capability_exception($systemcontext, 'moodle/user:viewdetails', 'nopermissions', '');
+    }
+}
 $iscourseselector = in_array($view, ['createquiz', 'createassign'], true);
 $courses = $iscourseselector ? [] : ($canadmin ? get_courses('all', 'c.sortorder ASC', 'c.id, c.fullname, c.shortname, c.visible, c.category') : enrol_get_my_courses('id, fullname, shortname, visible, category', 'sortorder ASC'));
 $courses = array_filter($courses, static function($course) {
@@ -77,6 +86,7 @@ echo $OUTPUT->header();
 
 $descriptions = [
     'learners' => 'Find learners in courses you are authorised to manage.',
+    'teachers' => 'Manage teaching staff using Moodle accounts, course roles and enrolments.',
     'exams' => 'Review quizzes and assessments available in your courses.',
     'assignments' => 'Review assignment activities and open their native grading pages.',
     'attendance' => 'Open attendance activities and authorised reports.',
@@ -105,6 +115,113 @@ echo $OUTPUT->render_from_template('local_echealthnav/page_intro', [
     'description' => $descriptions[$view],
     'primaryaction' => $primaryaction,
 ]);
+
+if ($view === 'teachers') {
+    $cancreate = has_capability('moodle/user:create', $systemcontext);
+    $teacherroles = $DB->get_records_select('role', "archetype IN ('teacher', 'editingteacher', 'noneditingteacher')", null, 'sortorder', 'id, name, shortname, archetype');
+    $roleconditions = [];
+    $roleparams = [];
+    foreach ($teacherroles as $role) {
+        $placeholder = 'teacherrole' . count($roleconditions);
+        $roleconditions[] = 'ra.roleid = :' . $placeholder;
+        $roleparams[$placeholder] = $role->id;
+    }
+    // Include configured Clinical Educator roles by name, while leaving Moodle's role definitions intact.
+    $customroles = $DB->get_records_sql("SELECT id, name, shortname, archetype FROM {role} WHERE " . $DB->sql_like('name', '?', false), ['%Clinical Educator%']);
+    foreach ($customroles as $role) {
+        $teacherroles[$role->id] = $role;
+        $placeholder = 'teacherrole' . count($roleconditions);
+        $roleconditions[] = 'ra.roleid = :' . $placeholder;
+        $roleparams[$placeholder] = $role->id;
+    }
+    $staff = [];
+    if ($roleconditions) {
+        $sql = "SELECT DISTINCT u.id, u.firstname, u.lastname, u.email, u.username, u.suspended, u.deleted,
+                       u.picture, u.imagealt, u.firstnamephonetic, u.lastnamephonetic, u.middlename, u.alternatename
+                  FROM {user} u JOIN {role_assignments} ra ON ra.userid = u.id
+                  JOIN {context} ctx ON ctx.id = ra.contextid
+                 WHERE u.deleted = 0 AND u.id <> :guestid AND (ctx.contextlevel = :courselevel OR ctx.contextlevel = :categorylevel)
+                   AND (" . implode(' OR ', $roleconditions) . ')';
+        $records = $DB->get_records_sql($sql, ['guestid' => $CFG->siteguest, 'courselevel' => CONTEXT_COURSE, 'categorylevel' => CONTEXT_COURSECAT] + $roleparams);
+        foreach ($records as $person) {
+            $person->courses = [];
+            $staff[$person->id] = $person;
+        }
+        if ($staff) {
+            [$insql, $inparams] = $DB->get_in_or_equal(array_keys($staff), SQL_PARAMS_NAMED);
+            $assignments = $DB->get_records_sql("SELECT DISTINCT c.id, ra.userid, c.fullname, c.category
+                FROM {role_assignments} ra JOIN {context} ctx ON ctx.id = ra.contextid
+                JOIN {course} c ON (ctx.contextlevel = :courselevel AND c.id = ctx.instanceid)
+                    OR (ctx.contextlevel = :categorylevel AND c.category = ctx.instanceid)
+                WHERE c.id <> :siteid AND ra.userid $insql ORDER BY c.fullname",
+                ['courselevel' => CONTEXT_COURSE, 'categorylevel' => CONTEXT_COURSECAT, 'siteid' => SITEID] + $inparams);
+            foreach ($assignments as $assignment) {
+                if ((int)$assignment->courseid !== SITEID && isset($staff[$assignment->userid])) {
+                    $staff[$assignment->userid]->courses[$assignment->courseid] = $assignment->fullname;
+                }
+            }
+        }
+    }
+    $campus = optional_param('campus', 0, PARAM_INT);
+    $status = optional_param('status', '', PARAM_ALPHA);
+    $search = optional_param('q', '', PARAM_TEXT);
+    $filteredstaff = array_filter($staff, static function($person) use ($search, $status) {
+        $matches = $search === '' || stripos(fullname($person), $search) !== false || stripos($person->email, $search) !== false || stripos($person->username, $search) !== false;
+        return $matches && ($status === '' || ($status === 'suspended' ? (bool)$person->suspended : !(bool)$person->suspended));
+    });
+    uasort($filteredstaff, static fn($a, $b) => strnatcasecmp(fullname($a), fullname($b)));
+    $totalstaff = count($filteredstaff);
+    $currentpage = min(max(0, $pageindex), max(0, (int)ceil($totalstaff / $perpage) - 1));
+    $params = ['view' => 'teachers', 'q' => $search, 'status' => $status, 'perpage' => $perpage];
+    $form = html_writer::start_tag('form', ['method' => 'get', 'class' => 'ec-page-toolbar ec-listing-filters mb-3']);
+    $form .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'view', 'value' => 'teachers']);
+    $form .= html_writer::empty_tag('input', ['type' => 'search', 'name' => 'q', 'value' => $search, 'class' => 'form-control', 'placeholder' => 'Search name, email or username', 'aria-label' => 'Search teaching staff']);
+    $form .= html_writer::select(['' => 'All statuses', 'active' => 'Active', 'suspended' => 'Suspended'], 'status', $status, false, ['class' => 'form-select', 'aria-label' => 'Filter by account status']);
+    $form .= html_writer::select([10 => '10 per page', 25 => '25 per page', 50 => '50 per page', 100 => '100 per page'], 'perpage', $perpage, false, ['class' => 'form-select', 'aria-label' => 'Results per page']);
+    $form .= html_writer::tag('button', 'Search', ['type' => 'submit', 'class' => 'btn btn-primary']);
+    if ($cancreate) {
+        $form .= html_writer::link(new moodle_url('/user/editadvanced.php', ['id' => -1]), 'Add Teacher', ['class' => 'btn btn-primary']);
+    }
+    echo $form . html_writer::end_tag('form');
+    echo html_writer::div("Showing " . ($totalstaff ? ($currentpage * $perpage + 1) . '–' . min($totalstaff, ($currentpage + 1) * $perpage) : '0') . " of $totalstaff teachers", 'text-muted small mb-2');
+    if ($filteredstaff) {
+        $rows = '';
+        foreach (array_slice($filteredstaff, $currentpage * $perpage, $perpage, true) as $person) {
+            $photo = $OUTPUT->user_picture($person, ['size' => 40, 'link' => false]);
+            $name = html_writer::link(new moodle_url('/local/echealthnav/index.php', ['view' => 'teachers', 'teacherid' => $person->id]), fullname($person));
+            $coursecount = count($person->courses);
+            $coursehtml = $coursecount ? s(implode(', ', array_slice($person->courses, 0, 3))) . ($coursecount > 3 ? ' +' . ($coursecount - 3) : '') : '—';
+            $statuslabel = $person->suspended ? 'Suspended' : 'Active';
+            $actions = html_writer::link(new moodle_url('/user/profile.php', ['id' => $person->id]), 'View') . ' · ' .
+                html_writer::link(new moodle_url('/user/editadvanced.php', ['id' => $person->id]), 'Edit');
+            $cells = [$photo . ' ' . $name, s($person->username), s($person->email), $coursehtml, $statuslabel, $actions];
+            $rows .= html_writer::tag('tr', implode('', array_map(static fn($cell) => html_writer::tag('td', $cell), $cells)));
+        }
+        $head = html_writer::tag('thead', html_writer::tag('tr', implode('', array_map(static fn($label) => html_writer::tag('th', $label, ['scope' => 'col']), ['Teacher', 'Username / Staff ID', 'Email', 'Assigned courses', 'Status', 'Actions']))));
+        echo html_writer::div(html_writer::tag('table', $head . html_writer::tag('tbody', $rows), ['class' => 'generaltable']), 'table-responsive');
+        echo $OUTPUT->paging_bar($totalstaff, $currentpage, $perpage, new moodle_url('/local/echealthnav/index.php', $params), 'p');
+    } else {
+        echo $OUTPUT->notification('No teaching staff match your search. Teacher accounts are detected from course and category teacher role assignments.', 'info');
+    }
+    if ($teacherid && isset($staff[$teacherid])) {
+        $person = $staff[$teacherid];
+        echo html_writer::tag('h2', fullname($person), ['class' => 'mt-4']);
+        echo html_writer::tag('p', s($person->email) . ' · ' . ($person->suspended ? 'Suspended' : 'Active'));
+        echo html_writer::tag('h3', 'Assigned courses');
+        if ($person->courses) {
+            $items = '';
+            foreach ($person->courses as $courseid => $coursename) {
+                $items .= html_writer::tag('li', html_writer::link(new moodle_url('/course/view.php', ['id' => $courseid]), format_string($coursename)));
+            }
+            echo html_writer::tag('ul', $items);
+        } else {
+            echo html_writer::tag('p', 'No course level assignments found.');
+        }
+        echo html_writer::link(new moodle_url('/user/profile.php', ['id' => $person->id]), 'Open Moodle profile', ['class' => 'btn btn-outline-primary']);
+    }
+    echo $OUTPUT->footer();
+    exit;
+}
 
 // Shared server-side search, filters, sorting and pagination for portal listings.
 $renderlisting = static function(array $htmlrows, array $courseoptions, string $title) use (

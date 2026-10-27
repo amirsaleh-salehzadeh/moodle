@@ -8,6 +8,6 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026102600;
+$plugin->version   = 2026102700;
 $plugin->requires  = 2026100500;
 $plugin->component = 'theme_echealth';

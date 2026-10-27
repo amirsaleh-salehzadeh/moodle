@@ -161,6 +161,15 @@ class core_renderer extends \theme_boost\output\core_renderer {
             if (file_exists($CFG->dirroot . '/user/editadvanced.php') && has_capability('moodle/user:create', $systemcontext)) {
                 $this->add_echealth_nav_item($learneritems, 'registerlearner', new \moodle_url('/user/editadvanced.php', ['id' => -1]), 'plus', $path === '/user/editadvanced.php');
             }
+            if ($admin || has_capability('moodle/user:viewdetails', $systemcontext) &&
+                    (has_capability('moodle/user:create', $systemcontext) || has_capability('moodle/user:update', $systemcontext))) {
+                $this->add_echealth_nav_item($learneritems, 'allteachers', $portalurl('teachers'), 'users',
+                    false);
+                if ($admin || has_capability('moodle/user:create', $systemcontext)) {
+                    $this->add_echealth_nav_item($learneritems, 'addteacher', new \moodle_url('/user/editadvanced.php', ['id' => -1]), 'plus',
+                        false);
+                }
+            }
             foreach ($enrolledcourses as $course) {
                 if ((int)$course->id !== SITEID && has_capability('moodle/course:enrolreview', \context_course::instance($course->id))) {
                     $this->add_echealth_nav_item($learneritems, 'enrolments', new \moodle_url('/enrol/instances.php', ['id' => $course->id]), 'enrolment',
@@ -585,6 +594,7 @@ class core_renderer extends \theme_boost\output\core_renderer {
             'learning' => 'book-open',
             'teachingassessments' => 'graduation-cap',
             'learnermanagement' => 'users',
+            'teachermanagement' => 'graduation-cap',
             'managementreports' => 'reports',
             'administration' => 'settings',
             'support' => 'headphones',
