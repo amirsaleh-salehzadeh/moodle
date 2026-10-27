@@ -505,31 +505,40 @@ class core_renderer extends \theme_boost\output\core_renderer {
         }
 
         $groups = [];
-        $groups[] = $this->render_echealth_nav_group('learning', $primary);
+        $groups[] = ['key' => 'learning', 'items' => $primary];
         if ($teaching) {
-            $groups[] = $this->render_echealth_nav_group('teachingassessments', $teaching, true);
+            $groups[] = ['key' => 'teachingassessments', 'items' => $teaching];
         }
         if ($learners) {
-            $groups[] = $this->render_echealth_nav_group('learnermanagement', $learners, true);
+            $groups[] = ['key' => 'learnermanagement', 'items' => $learners];
         }
         if ($management) {
-            $groups[] = $this->render_echealth_nav_group('managementreports', $management, true);
+            $groups[] = ['key' => 'managementreports', 'items' => $management];
         }
         if ($system) {
-            $groups[] = $this->render_echealth_nav_group('administration', $system, true);
+            $groups[] = ['key' => 'administration', 'items' => $system];
         }
         if ($support) {
-            $groups[] = $this->render_echealth_nav_group('support', $support);
+            $groups[] = ['key' => 'support', 'items' => $support];
+        }
+        // Render one deterministic active panel in the initial HTML. Bootstrap
+        // tabs take over after load, but the page never starts with stacked panels.
+        $selectedgroup = 'learning';
+        foreach ($groups as $group) {
+            if ($this->echealth_nav_children_active($group['items'])) {
+                $selectedgroup = $group['key'];
+                break;
+            }
         }
         $html = \html_writer::start_tag('nav', ['class' => 'ec-navigation ec-mega-navigation', 'aria-label' => get_string('primarynavigation', 'theme_echealth')]);
-        $html .= \html_writer::start_tag('div', ['class' => 'ec-mega-tabs']);
+        $html .= \html_writer::start_tag('div', ['class' => 'ec-mega-tabs nav nav-tabs', 'role' => 'tablist']);
         foreach ($groups as $group) {
-            $html .= $group['tab'];
+            $html .= $this->render_echealth_nav_group($group['key'], $group['items'], $group['key'] === $selectedgroup)['tab'];
         }
         $html .= \html_writer::end_tag('div');
-        $html .= \html_writer::start_tag('div', ['class' => 'ec-mega-panels']);
+        $html .= \html_writer::start_tag('div', ['class' => 'ec-mega-panels tab-content']);
         foreach ($groups as $group) {
-            $html .= $group['panel'];
+            $html .= $this->render_echealth_nav_group($group['key'], $group['items'], $group['key'] === $selectedgroup)['panel'];
         }
         $html .= \html_writer::end_tag('div');
         $html .= \html_writer::end_tag('nav');
@@ -545,6 +554,9 @@ class core_renderer extends \theme_boost\output\core_renderer {
     public function echealth_mobile_navigation(): string {
         $html = $this->echealth_navigation();
         $html = str_replace('aria-controls="ec-mega-panel-', 'aria-controls="ec-mobile-mega-panel-', $html);
+        $html = str_replace('data-bs-target="#ec-mega-panel-', 'data-bs-target="#ec-mobile-mega-panel-', $html);
+        $html = str_replace('aria-labelledby="ec-mega-tab-', 'aria-labelledby="ec-mobile-mega-tab-', $html);
+        $html = str_replace('id="ec-mega-tab-', 'id="ec-mobile-mega-tab-', $html);
         return str_replace('id="ec-mega-panel-', 'id="ec-mobile-mega-panel-', $html);
     }
 
@@ -571,15 +583,12 @@ class core_renderer extends \theme_boost\output\core_renderer {
      *
      * @param string $titlekey
      * @param array $items
+     * @param bool $selected
      * @return array
      */
-    private function render_echealth_nav_group(string $titlekey, array $items, bool $collapsible = false): array {
+    private function render_echealth_nav_group(string $titlekey, array $items, bool $selected = false): array {
         if (!$items) {
             return ['tab' => '', 'panel' => ''];
-        }
-        $hasactive = false;
-        foreach ($items as $item) {
-            $hasactive = $hasactive || !empty($item['active']) || $this->echealth_nav_children_active($item['children'] ?? []);
         }
         $sectionicons = [
             'learning' => 'book-open',
@@ -597,17 +606,25 @@ class core_renderer extends \theme_boost\output\core_renderer {
         ]);
         $sectionlabel = get_string($titlekey, 'theme_echealth');
         $panelid = 'ec-mega-panel-' . $titlekey;
+        $tabid = 'ec-mega-tab-' . $titlekey;
         $tab = \html_writer::tag('button', $sectionicon . \html_writer::tag('span', $sectionlabel, ['class' => 'ec-nav-section-label']), [
             'type' => 'button',
-            'class' => 'ec-nav-heading ec-mega-trigger ec-nav-group--' . $titlekey,
+            'id' => $tabid,
+            'class' => 'nav-link ec-nav-heading ec-mega-trigger ec-nav-group--' . $titlekey . ($selected ? ' active' : ''),
+            'data-bs-toggle' => 'tab',
+            'data-bs-target' => '#' . $panelid,
+            'role' => 'tab',
             'aria-controls' => $panelid,
-            'aria-expanded' => $hasactive ? 'true' : 'false',
+            'aria-selected' => $selected ? 'true' : 'false',
+            'tabindex' => $selected ? '0' : '-1',
         ]);
         $panel = \html_writer::start_tag('section', [
             'id' => $panelid,
-            'class' => 'ec-mega-panel ec-nav-group--' . $titlekey,
+            'class' => 'tab-pane ec-mega-panel ec-nav-group--' . $titlekey . ($selected ? ' active show' : ''),
+            'role' => 'tabpanel',
+            'aria-labelledby' => $tabid,
+            'tabindex' => '0',
             'aria-label' => $sectionlabel,
-            'hidden' => $hasactive ? null : 'hidden',
         ]);
         $panel .= \html_writer::start_tag('ul', ['class' => 'ec-nav-list']);
         foreach ($items as $item) {

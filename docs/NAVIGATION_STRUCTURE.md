@@ -4,7 +4,7 @@
 
 The authenticated global sidebar is rendered by `theme_echealth` in `public/theme/echealth/classes/output/core_renderer.php` and inherits Boost. This document is the navigation structure source of truth for the renderer. It uses Moodle URLs, context checks, and `has_capability()` gates; it does not infer authorization from role-name strings. Course activities remain under real course contexts. On anonymous pages, Boost-native public navigation remains in use.
 
-The rendered top-level groups follow this document: **Learning**, **Teaching & Assessments**, **Learner Management**, **Management & Reports**, **System Administration**, and **Help & Support**. The three management groups are separate disclosures, not combined under a generic Administration heading. Empty groups are omitted for users who have no authorized destinations in them.
+The rendered top-level groups follow this document: **Learning**, **Teaching & Assessments**, **Learner Management**, **Management & Reports**, **System Administration**, and **Help & Support**. The section bar uses Moodle's Bootstrap tab component: one section panel is active at a time, while all permitted child groups and links inside it are displayed expanded. Empty groups are omitted for users who have no authorized destinations in them.
 
 ## Global sidebar
 

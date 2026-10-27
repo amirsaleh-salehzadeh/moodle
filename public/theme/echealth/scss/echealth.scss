@@ -475,19 +475,18 @@ body.pagelayout-mydashboard .block_settings {
     transition: transform .15s ease;
 }
 
-.ec-mega-trigger[aria-expanded="true"],
+.ec-mega-trigger.active,
 .ec-mega-trigger:hover,
 .ec-mega-trigger:focus-visible {
     border-bottom-color: var(--ec-section-color);
     background: color-mix(in srgb, var(--ec-section-color) 8%, white);
 }
 
-.ec-mega-trigger[aria-expanded="true"]::after {
+.ec-mega-trigger.active::after {
     transform: rotate(180deg);
 }
 
 .ec-mega-panel {
-    display: block;
     width: 100%;
     max-height: min(70vh, 42rem);
     overflow: auto;
@@ -502,8 +501,12 @@ body.pagelayout-mydashboard .block_settings {
     pointer-events: auto;
 }
 
-.ec-mega-panel[hidden] {
+.ec-mega-panel:not(.active) {
     display: none !important;
+}
+
+.ec-mega-panel.active {
+    display: block;
 }
 
 .ec-mega-panel > .ec-nav-list {
