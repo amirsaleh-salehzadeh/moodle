@@ -6,6 +6,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 import Drawers from 'theme_boost/drawers';
+import {Tab} from 'bootstrap';
 
 const focusableSelector = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -42,6 +43,11 @@ export const init = () => {
             // Use the server-provided active state when storage is unavailable.
         }
         buttons.forEach(button => {
+            button.addEventListener('pointerenter', event => {
+                if (hasHover && event.pointerType === 'mouse' && !button.classList.contains('active')) {
+                    Tab.getOrCreateInstance(button).show();
+                }
+            });
             button.addEventListener('shown.bs.tab', () => {
                 const section = Array.from(button.classList).find(name => name.startsWith('ec-nav-group--'))?.replace('ec-nav-group--', '');
                 try {
