@@ -392,6 +392,244 @@ body.pagelayout-mydashboard .block_settings {
     padding-left: .75rem;
 }
 
+// Desktop navigation opens one section panel at a time. Nested menu groups are
+// rendered expanded as columns, so their links never need a disclosure click.
+.ec-desktop-megamenu {
+    position: relative;
+    z-index: 1030;
+    overflow: visible;
+    border-bottom: 1px solid $ec-border;
+    background: #fff;
+}
+
+.ec-mega-navigation {
+    position: relative;
+    display: block;
+    overflow: visible;
+    width: min(100% - 2rem, 1440px);
+    margin: 0 auto;
+}
+
+.ec-mega-tabs {
+    display: flex;
+    min-height: 3.25rem;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: .25rem;
+}
+
+.ec-mega-panels {
+    position: fixed;
+    top: var(--ec-mega-panel-top, 9rem);
+    right: 0;
+    left: 0;
+    z-index: 1031;
+    width: min(100% - 2rem, 1440px);
+    margin: 0 auto;
+    pointer-events: none;
+}
+
+.ec-mega-trigger {
+    --ec-section-color: #{$ec-blue};
+    display: flex;
+    min-height: 3.25rem;
+    align-items: center;
+    gap: .5rem;
+    margin: 0;
+    padding: .65rem .9rem;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ec-section-color);
+    cursor: pointer;
+    font-size: .8rem;
+    font-weight: 700;
+    letter-spacing: .025em;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.ec-nav-group--learning { --ec-section-color: #{$ec-blue}; }
+.ec-nav-group--teachingassessments { --ec-section-color: #{$ec-green}; }
+.ec-nav-group--learnermanagement { --ec-section-color: #8a6400; }
+.ec-nav-group--managementreports { --ec-section-color: #{$ec-red}; }
+.ec-nav-group--administration { --ec-section-color: #{$ec-charcoal}; }
+.ec-nav-group--support { --ec-section-color: #087e83; }
+
+.ec-nav-section-icon {
+    width: 1.1rem;
+    height: 1.1rem;
+    flex: 0 0 auto;
+}
+
+.ec-nav-section-label {
+    min-width: 0;
+}
+
+.ec-mega-trigger::after {
+    width: .75rem;
+    height: .75rem;
+    background: url("../pix/icons/chevron-down.svg") center / contain no-repeat;
+    content: "";
+    transition: transform .15s ease;
+}
+
+.ec-mega-trigger[aria-expanded="true"],
+.ec-mega-trigger:hover,
+.ec-mega-trigger:focus-visible {
+    border-bottom-color: var(--ec-section-color);
+    background: color-mix(in srgb, var(--ec-section-color) 8%, white);
+}
+
+.ec-mega-trigger[aria-expanded="true"]::after {
+    transform: rotate(180deg);
+}
+
+.ec-mega-panel {
+    display: block;
+    width: 100%;
+    max-height: min(70vh, 42rem);
+    overflow: auto;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 1rem 1.25rem;
+    border: 1px solid $ec-border;
+    border-top: 3px solid var(--ec-section-color);
+    border-radius: 0 0 $ec-radius-md $ec-radius-md;
+    background: #fff;
+    box-shadow: var(--ec-shadow);
+    pointer-events: auto;
+}
+
+.ec-mega-panel[hidden] {
+    display: none !important;
+}
+
+.ec-mega-panel > .ec-nav-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: start;
+    gap: .4rem 1.1rem;
+}
+
+.ec-mega-panel .ec-nav-link {
+    min-height: 2.5rem;
+    border-radius: .4rem;
+    color: $ec-charcoal;
+}
+
+.ec-mega-panel .ec-nav-link:hover,
+.ec-mega-panel .ec-nav-link:focus-visible {
+    background: color-mix(in srgb, var(--ec-section-color) 9%, white);
+    color: var(--ec-section-color);
+}
+
+.ec-mega-panel .ec-nav-link.is-active {
+    background: color-mix(in srgb, var(--ec-section-color) 12%, white);
+    box-shadow: inset 3px 0 0 var(--ec-section-color);
+    color: var(--ec-section-color);
+}
+
+.ec-mega-panel .ec-nav-link.is-active .ec-nav-icon {
+    filter: none;
+}
+
+.ec-mega-panel .ec-nav-sublist {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 1rem;
+}
+
+.ec-mega-panel .ec-nav-mega-parent > .ec-nav-sublist {
+    display: grid;
+}
+
+.ec-mega-panel .ec-nav-subheading {
+    min-height: 2.4rem;
+    font-weight: 700;
+}
+
+@media (min-width: 768px) {
+    body:not(.notloggedin):not(.pagelayout-login) #page,
+    body:not(.notloggedin):not(.pagelayout-login) #page-footer {
+        margin-left: 0;
+    }
+}
+
+@media (max-width: 1099.98px) and (min-width: 768px) {
+    .ec-mega-navigation {
+        width: 100%;
+        padding: 0 .75rem;
+    }
+
+    .ec-mega-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+    }
+
+    .ec-mega-panel > .ec-nav-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .ec-mega-trigger {
+        padding-right: .55rem;
+        padding-left: .55rem;
+        font-size: .72rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .ec-desktop-megamenu {
+        display: none;
+    }
+}
+
+.ec-mobile-navigation-drawer .ec-mega-navigation {
+    position: static;
+    width: auto;
+    margin: 0;
+}
+
+.ec-mobile-navigation-drawer .ec-mega-panels {
+    position: static;
+}
+
+.ec-mobile-navigation-drawer .ec-mega-tabs {
+    min-height: 0;
+    flex-direction: column;
+    gap: .35rem;
+}
+
+.ec-mobile-navigation-drawer .ec-mega-trigger {
+    min-height: 2.5rem;
+    justify-content: flex-start;
+    margin: 0;
+    padding: .4rem .7rem;
+    border: 0;
+    border-left: 3px solid var(--ec-section-color);
+    border-radius: .25rem;
+    background: color-mix(in srgb, var(--ec-section-color) 8%, white);
+    font-size: .74rem;
+    letter-spacing: .045em;
+}
+
+.ec-mobile-navigation-drawer .ec-mega-panel {
+    position: static;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    margin-bottom: .75rem;
+    padding: .25rem 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.ec-mobile-navigation-drawer .ec-mega-panel > .ec-nav-list {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .ec-mobile-brand-name {
     margin-left: .7rem;
     font-weight: 700;

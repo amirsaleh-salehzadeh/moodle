@@ -67,12 +67,9 @@
 </nav>
 
 {{#usermenu}}
-    <aside class="ec-desktop-sidebar" aria-label="{{#str}}primarynavigation, theme_echealth{{/str}}">
-        <details class="ec-sidebar-disclosure" open>
-            <summary>{{#str}}navigationmenu, theme_echealth{{/str}}</summary>
-            {{{ output.echealth_navigation }}}
-        </details>
-    </aside>
+    <div class="ec-desktop-megamenu">
+        {{{ output.echealth_navigation }}}
+    </div>
     {{> theme_echealth/mobile_navigation }}
 {{/usermenu}}
 {{^usermenu}}

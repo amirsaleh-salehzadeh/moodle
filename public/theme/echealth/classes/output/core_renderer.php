@@ -504,26 +504,48 @@ class core_renderer extends \theme_boost\output\core_renderer {
             $this->add_echealth_nav_item($support, 'helpsupport', $supporturl, 'help', false);
         }
 
-        $html = \html_writer::start_tag('nav', ['class' => 'ec-navigation', 'aria-label' => get_string('primarynavigation', 'theme_echealth')]);
-        $html .= $this->render_echealth_nav_group('learning', $primary);
+        $groups = [];
+        $groups[] = $this->render_echealth_nav_group('learning', $primary);
         if ($teaching) {
-            $html .= $this->render_echealth_nav_group('teachingassessments', $teaching, true);
+            $groups[] = $this->render_echealth_nav_group('teachingassessments', $teaching, true);
         }
         if ($learners) {
-            $html .= $this->render_echealth_nav_group('learnermanagement', $learners, true);
+            $groups[] = $this->render_echealth_nav_group('learnermanagement', $learners, true);
         }
         if ($management) {
-            $html .= $this->render_echealth_nav_group('managementreports', $management, true);
+            $groups[] = $this->render_echealth_nav_group('managementreports', $management, true);
         }
         if ($system) {
-            $html .= $this->render_echealth_nav_group('administration', $system, true);
+            $groups[] = $this->render_echealth_nav_group('administration', $system, true);
         }
         if ($support) {
-            $html .= $this->render_echealth_nav_group('support', $support);
+            $groups[] = $this->render_echealth_nav_group('support', $support);
         }
+        $html = \html_writer::start_tag('nav', ['class' => 'ec-navigation ec-mega-navigation', 'aria-label' => get_string('primarynavigation', 'theme_echealth')]);
+        $html .= \html_writer::start_tag('div', ['class' => 'ec-mega-tabs']);
+        foreach ($groups as $group) {
+            $html .= $group['tab'];
+        }
+        $html .= \html_writer::end_tag('div');
+        $html .= \html_writer::start_tag('div', ['class' => 'ec-mega-panels']);
+        foreach ($groups as $group) {
+            $html .= $group['panel'];
+        }
+        $html .= \html_writer::end_tag('div');
         $html .= \html_writer::end_tag('nav');
         $this->echealthnavigation = $html;
         return $this->echealthnavigation;
+    }
+
+    /**
+     * Return navigation markup with unique panel IDs for the mobile drawer.
+     *
+     * @return string
+     */
+    public function echealth_mobile_navigation(): string {
+        $html = $this->echealth_navigation();
+        $html = str_replace('aria-controls="ec-mega-panel-', 'aria-controls="ec-mobile-mega-panel-', $html);
+        return str_replace('id="ec-mega-panel-', 'id="ec-mobile-mega-panel-', $html);
     }
 
     /**
@@ -549,23 +571,46 @@ class core_renderer extends \theme_boost\output\core_renderer {
      *
      * @param string $titlekey
      * @param array $items
-     * @return string
+     * @return array
      */
-    private function render_echealth_nav_group(string $titlekey, array $items, bool $collapsible = false): string {
+    private function render_echealth_nav_group(string $titlekey, array $items, bool $collapsible = false): array {
         if (!$items) {
-            return '';
+            return ['tab' => '', 'panel' => ''];
         }
-        if ($collapsible) {
-            $html = \html_writer::start_tag('details', ['class' => 'ec-nav-group ec-admin-group', 'data-ec-accordion' => 'group']);
-            $html .= \html_writer::tag('summary', get_string($titlekey, 'theme_echealth'), ['class' => 'ec-nav-heading']);
-        } else {
-            $html = \html_writer::start_tag('section', ['class' => 'ec-nav-group']);
-            $html .= \html_writer::tag('h2', get_string($titlekey, 'theme_echealth'), ['class' => 'ec-nav-heading']);
-        }
-        $html .= \html_writer::start_tag('ul', ['class' => 'ec-nav-list']);
         $hasactive = false;
         foreach ($items as $item) {
             $hasactive = $hasactive || !empty($item['active']) || $this->echealth_nav_children_active($item['children'] ?? []);
+        }
+        $sectionicons = [
+            'learning' => 'book-open',
+            'teachingassessments' => 'graduation-cap',
+            'learnermanagement' => 'users',
+            'managementreports' => 'reports',
+            'administration' => 'settings',
+            'support' => 'headphones',
+        ];
+        $sectionicon = \html_writer::empty_tag('img', [
+            'src' => $this->image_url('icons/' . $sectionicons[$titlekey], 'theme_echealth')->out(false),
+            'alt' => '',
+            'aria-hidden' => 'true',
+            'class' => 'ec-nav-section-icon',
+        ]);
+        $sectionlabel = get_string($titlekey, 'theme_echealth');
+        $panelid = 'ec-mega-panel-' . $titlekey;
+        $tab = \html_writer::tag('button', $sectionicon . \html_writer::tag('span', $sectionlabel, ['class' => 'ec-nav-section-label']), [
+            'type' => 'button',
+            'class' => 'ec-nav-heading ec-mega-trigger ec-nav-group--' . $titlekey,
+            'aria-controls' => $panelid,
+            'aria-expanded' => $hasactive ? 'true' : 'false',
+        ]);
+        $panel = \html_writer::start_tag('section', [
+            'id' => $panelid,
+            'class' => 'ec-mega-panel ec-nav-group--' . $titlekey,
+            'aria-label' => $sectionlabel,
+            'hidden' => $hasactive ? null : 'hidden',
+        ]);
+        $panel .= \html_writer::start_tag('ul', ['class' => 'ec-nav-list']);
+        foreach ($items as $item) {
             $attributes = [
                 'href' => $item['url'],
                 'class' => 'ec-nav-link' . ($item['active'] ? ' is-active' : ''),
@@ -581,25 +626,25 @@ class core_renderer extends \theme_boost\output\core_renderer {
             ]);
             $content = $icon . \html_writer::tag('span', $item['label'], ['class' => 'ec-nav-label']);
             if (!empty($item['children'])) {
-                $html .= \html_writer::start_tag('li', ['class' => 'ec-nav-parent']);
-                $html .= \html_writer::start_tag('details', ['class' => 'ec-nav-subgroup', 'data-ec-accordion' => 'submenu',
-                    'open' => (!empty($item['active']) || $this->echealth_nav_children_active($item['children'])) ? 'open' : null]);
-                $summary = \html_writer::tag('span', $content, ['class' => 'ec-nav-summary-content']);
-                $html .= \html_writer::tag('summary', $summary, ['class' => 'ec-nav-link']);
-                $html .= $this->render_echealth_nav_items($item['children']);
-                $html .= \html_writer::end_tag('details') . \html_writer::end_tag('li');
+                $panel .= \html_writer::start_tag('li', ['class' => 'ec-nav-parent ec-nav-mega-parent']);
+                if ($item['url'] !== '') {
+                    $parentattributes = ['href' => $item['url'], 'class' => 'ec-nav-link ec-nav-subheading'];
+                    if (!empty($item['active'])) {
+                        $parentattributes['aria-current'] = 'page';
+                    }
+                    $panel .= \html_writer::tag('a', $content, $parentattributes);
+                } else {
+                    $panel .= \html_writer::tag('div', $content, ['class' => 'ec-nav-link ec-nav-subheading']);
+                }
+                $panel .= $this->render_echealth_nav_items($item['children']);
+                $panel .= \html_writer::end_tag('li');
             } else {
-                $html .= \html_writer::tag('li', \html_writer::tag('a', $content, $attributes));
+                $panel .= \html_writer::tag('li', \html_writer::tag('a', $content, $attributes));
             }
         }
-        $html .= \html_writer::end_tag('ul');
-        if ($collapsible && $hasactive) {
-            // A native details element must have its open attribute at creation.
-            $html = str_replace('<details class="ec-nav-group ec-admin-group" data-ec-accordion="group">',
-                '<details class="ec-nav-group ec-admin-group" data-ec-accordion="group" open>', $html);
-        }
-        $html .= \html_writer::end_tag($collapsible ? 'details' : 'section');
-        return $html;
+        $panel .= \html_writer::end_tag('ul');
+        $panel .= \html_writer::end_tag('section');
+        return ['tab' => $tab, 'panel' => $panel];
     }
 
     /**
@@ -617,12 +662,18 @@ class core_renderer extends \theme_boost\output\core_renderer {
             }
             $content = $icon . \html_writer::tag('span', $item['label'], ['class' => 'ec-nav-label']);
             if (!empty($item['children'])) {
-                $html .= \html_writer::start_tag('li', ['class' => 'ec-nav-parent']);
-                $html .= \html_writer::start_tag('details', ['class' => 'ec-nav-subgroup', 'data-ec-accordion' => 'submenu',
-                    'open' => (!empty($item['active']) || $this->echealth_nav_children_active($item['children'])) ? 'open' : null]);
-                $html .= \html_writer::tag('summary', \html_writer::tag('span', $content, ['class' => 'ec-nav-summary-content']), ['class' => 'ec-nav-link']);
+                $html .= \html_writer::start_tag('li', ['class' => 'ec-nav-parent ec-nav-mega-parent']);
+                if (!empty($item['url'])) {
+                    $parentattributes = ['href' => $item['url'], 'class' => 'ec-nav-link ec-nav-subheading'];
+                    if (!empty($item['active'])) {
+                        $parentattributes['aria-current'] = 'page';
+                    }
+                    $html .= \html_writer::tag('a', $content, $parentattributes);
+                } else {
+                    $html .= \html_writer::tag('div', $content, ['class' => 'ec-nav-link ec-nav-subheading']);
+                }
                 $html .= $this->render_echealth_nav_items($item['children']);
-                $html .= \html_writer::end_tag('details') . \html_writer::end_tag('li');
+                $html .= \html_writer::end_tag('li');
             } else {
                 $html .= \html_writer::tag('li', \html_writer::tag('a', $content, $attributes));
             }
