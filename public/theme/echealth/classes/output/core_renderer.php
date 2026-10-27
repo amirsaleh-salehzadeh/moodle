@@ -92,6 +92,7 @@ class core_renderer extends \theme_boost\output\core_renderer {
             $this->add_echealth_nav_item($primary, 'sitehome', new \moodle_url('/'), 'home', $path === '/');
             $this->add_echealth_nav_item($primary, 'catalogue', new \moodle_url('/course/index.php'), 'catalogue', $path === '/course/index.php');
         } else {
+            $issiteadmin = has_capability('moodle/site:config', $systemcontext);
             $enrolledcourses = enrol_get_my_courses('id, fullname, shortname', 'sortorder ASC', 30);
             // Only inspect course modules when optional navigation destinations are installed.
             if (isset($optionalmodules['customcert']) || isset($optionalmodules['attendance']) || isset($optionalmodules['forum'])) {
@@ -140,6 +141,236 @@ class core_renderer extends \theme_boost\output\core_renderer {
                     $path === '/badges/mybadges.php');
             }
 
+            // Put the established Moodle destinations into the permanent portal rail.
+            // Course activities are still resolved inside each course and filtered by
+            // the same capabilities Moodle uses to protect those native pages.
+            $admin = has_capability('moodle/site:config', $systemcontext);
+            $portalurl = static function(string $view): \moodle_url {
+                return new \moodle_url('/local/echealthnav/index.php', ['view' => $view]);
+            };
+            $learneritems = [];
+            if ($admin || has_capability('moodle/user:create', $systemcontext) || has_capability('moodle/user:update', $systemcontext)) {
+                $this->add_echealth_nav_item($learneritems, 'alllearners', $portalurl('learners'), 'users', $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'learners');
+            }
+            $participantcourses = array_values(array_filter($enrolledcourses, static function($course) {
+                return (int)$course->id !== SITEID && has_capability('moodle/course:viewparticipants', \context_course::instance($course->id));
+            }));
+            if ($participantcourses && !$learneritems) {
+                $this->add_echealth_nav_item($learneritems, 'alllearners', $portalurl('learners'), 'users', $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'learners');
+            }
+            if (file_exists($CFG->dirroot . '/user/editadvanced.php') && has_capability('moodle/user:create', $systemcontext)) {
+                $this->add_echealth_nav_item($learneritems, 'registerlearner', new \moodle_url('/user/editadvanced.php', ['id' => -1]), 'plus', $path === '/user/editadvanced.php');
+            }
+            foreach ($enrolledcourses as $course) {
+                if ((int)$course->id !== SITEID && has_capability('moodle/course:enrolreview', \context_course::instance($course->id))) {
+                    $this->add_echealth_nav_item($learneritems, 'enrolments', new \moodle_url('/enrol/instances.php', ['id' => $course->id]), 'enrolment',
+                        $path === '/enrol/instances.php' && (int)$this->page->url->get_param('id') === (int)$course->id);
+                    break;
+                }
+            }
+            if ($issiteadmin && file_exists($CFG->dirroot . '/enrol/instances.php') &&
+                    !array_filter($learneritems, static fn($item) => $item['label'] === get_string('enrolments', 'theme_echealth'))) {
+                $this->add_echealth_nav_item($learneritems, 'enrolments', $portalurl('enrolments'), 'enrolment',
+                    $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'enrolments');
+            }
+            $hasgroupsdestination = false;
+            if (has_capability('moodle/cohort:manage', $systemcontext)) {
+                $this->add_echealth_nav_item($learneritems, 'groupscohorts', new \moodle_url('/cohort/index.php'), 'campus', $path === '/cohort/index.php');
+                $hasgroupsdestination = true;
+            }
+            if (!$hasgroupsdestination) {
+                foreach ($enrolledcourses as $course) {
+                    if ((int)$course->id !== SITEID && has_capability('moodle/course:managegroups', \context_course::instance($course->id))) {
+                        $this->add_echealth_nav_item($learneritems, 'groupscohorts', new \moodle_url('/group/index.php', ['id' => $course->id]), 'campus',
+                            $path === '/group/index.php' && (int)$this->page->url->get_param('id') === (int)$course->id);
+                        break;
+                    }
+                }
+            }
+            if (file_exists($CFG->dirroot . '/admin/tool/lp/competencies.php') && has_capability('tool/lp:competencymanage', $systemcontext)) {
+                $this->add_echealth_nav_item($learneritems, 'competencies', new \moodle_url('/admin/tool/lp/competencies.php'), 'competency', str_starts_with($path, '/admin/tool/lp/'));
+            }
+            $canviewlearnerprogress = false;
+            foreach ($enrolledcourses as $course) {
+                if ((int)$course->id !== SITEID && has_capability('report/progress:view', \context_course::instance($course->id))) {
+                    $canviewlearnerprogress = true;
+                    break;
+                }
+            }
+            if ($admin || $canviewlearnerprogress) {
+                $this->add_echealth_nav_item($learneritems, 'learnerprogress', $portalurl('reports'), 'grades', $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'reports');
+            }
+            if ($learneritems) {
+                $learners = $learneritems;
+            }
+
+            $managedcourses = [];
+            foreach ($enrolledcourses as $course) {
+                if ((int)$course->id === SITEID) {
+                    continue;
+                }
+                $context = \context_course::instance($course->id);
+                $cancreatequiz = has_capability('mod/quiz:addinstance', $context);
+                $cancreateassign = has_capability('mod/assign:addinstance', $context);
+                if ($admin || $cancreatequiz || $cancreateassign || has_capability('moodle/course:update', $context)) {
+                    $managedcourses[] = $course;
+                }
+            }
+
+            $coursechildren = [];
+            $this->add_echealth_nav_item($coursechildren, 'allcourses', $portalurl('courses'), 'book-open', $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'courses');
+            if ($admin || has_capability('moodle/course:create', $systemcontext)) {
+                $this->add_echealth_nav_item($coursechildren, 'createcourse', new \moodle_url('/course/edit.php'), 'plus', $path === '/course/edit.php');
+            }
+            $this->add_echealth_nav_item($coursechildren, 'modulescontent', new \moodle_url('/my/courses.php'), 'book', $path === '/my/courses.php');
+            $this->add_echealth_nav_item($coursechildren, 'categories', new \moodle_url('/course/index.php'), 'catalogue', $path === '/course/index.php');
+            if ($coursechildren) {
+                $teaching[] = ['label' => get_string('coursesubjects', 'theme_echealth'), 'url' => $portalurl('courses')->out(false),
+                    'icon' => $this->image_url('icons/courses', 'theme_echealth')->out(false), 'active' => false, 'children' => $coursechildren];
+            }
+
+            $quizcourses = [];
+            $quizreportcourses = [];
+            $quizcreatecourses = [];
+            $assigncourses = [];
+            $gradecourses = [];
+            $assigncreatecourses = [];
+            $attcourses = [];
+            $forcourses = [];
+            foreach ($enrolledcourses as $course) {
+                if ((int)$course->id === SITEID) {
+                    continue;
+                }
+                $context = \context_course::instance($course->id);
+                $courseurl = new \moodle_url('/course/view.php', ['id' => $course->id]);
+                if ($issiteadmin || has_capability('mod/quiz:attempt', $context) || has_capability('mod/quiz:viewreports', $context) || has_capability('mod/quiz:addinstance', $context)) {
+                    $quizcourses[] = ['label' => format_string($course->fullname), 'url' => (new \moodle_url('/mod/quiz/index.php', ['id' => $course->id]))->out(false),
+                        'icon' => $this->image_url('icons/quiz', 'theme_echealth')->out(false), 'active' => false];
+                }
+                if ($issiteadmin || has_capability('mod/quiz:viewreports', $context)) {
+                    $quizreportcourses[] = $course;
+                }
+                if ($issiteadmin || has_capability('mod/quiz:addinstance', $context)) {
+                    $quizcreatecourses[] = $course;
+                }
+                if ($issiteadmin || has_capability('mod/assign:submit', $context) || has_capability('mod/assign:grade', $context) || has_capability('mod/assign:addinstance', $context)) {
+                    $assigncourses[] = ['label' => format_string($course->fullname), 'url' => (new \moodle_url('/mod/assign/index.php', ['id' => $course->id]))->out(false),
+                        'icon' => $this->image_url('icons/clipboard', 'theme_echealth')->out(false), 'active' => false];
+                }
+                if ($issiteadmin || has_capability('mod/assign:grade', $context)) {
+                    $gradecourses[] = $course;
+                }
+                if ($issiteadmin || has_capability('mod/assign:addinstance', $context)) {
+                    $assigncreatecourses[] = $course;
+                }
+                if (isset($optionalmodules['attendance']) && ($issiteadmin || has_capability('mod/attendance:view', $context))) {
+                    $attcourses[] = ['label' => format_string($course->fullname), 'url' => $courseurl->out(false),
+                        'icon' => $this->image_url('icons/attendance', 'theme_echealth')->out(false), 'active' => false];
+                }
+            }
+            $addsection = function(array &$items, string $label, string $view, string $icon, array $children = []) use ($portalurl, $path) {
+                $active = $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === $view;
+                $item = ['label' => $label, 'url' => $portalurl($view)->out(false), 'icon' => $this->image_url('icons/' . $icon, 'theme_echealth')->out(false), 'active' => $active];
+                if ($children) {
+                    $item['children'] = $children;
+                }
+                $items[] = $item;
+            };
+            if ($quizcourses || $managedcourses || $issiteadmin) {
+                $children = [];
+                $this->add_echealth_nav_item($children, 'allexams', $portalurl('exams'), 'quiz', $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'exams');
+                if ($quizcreatecourses || $issiteadmin) {
+                    $this->add_echealth_nav_item($children, 'createexam', $portalurl('createquiz'), 'plus', $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'createquiz');
+                }
+                $questioncourse = $issiteadmin ? get_site() : null;
+                foreach ($enrolledcourses as $course) {
+                    if ((int)$course->id !== SITEID && ($issiteadmin || has_capability('moodle/question:managecategory', \context_course::instance($course->id)))) {
+                        $questioncourse = $course;
+                        break;
+                    }
+                }
+                if ($questioncourse) {
+                    $this->add_echealth_nav_item($children, 'questionbank', new \moodle_url('/question/banks.php', ['courseid' => $questioncourse->id]), 'file-text', str_starts_with($path, '/question/'));
+                }
+                if ($quizcourses || $issiteadmin) {
+                    $this->add_echealth_nav_item($children, 'attempts', new \moodle_url('/local/echealthnav/index.php', ['view' => 'exams', 'focus' => 'attempts']), 'activity', false);
+                }
+                if ($quizreportcourses || $issiteadmin) {
+                    $this->add_echealth_nav_item($children, 'resultsgrades', new \moodle_url('/local/echealthnav/index.php', ['view' => 'reports', 'focus' => 'exams']), 'grades', false);
+                }
+                $addsection($teaching, get_string('examsassessments', 'theme_echealth'), 'exams', 'quiz', $children);
+            }
+            if ($assigncourses || $managedcourses || $issiteadmin) {
+                $children = [];
+                $this->add_echealth_nav_item($children, 'allassignments', $portalurl('assignments'), 'clipboard', $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'assignments');
+                if ($assigncreatecourses || $issiteadmin) {
+                    $this->add_echealth_nav_item($children, 'createassignment', $portalurl('createassign'), 'plus', $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'createassign');
+                }
+                if ($gradecourses || $issiteadmin) {
+                    $this->add_echealth_nav_item($children, 'submissions', $portalurl('assignments'), 'upload', false);
+                    $this->add_echealth_nav_item($children, 'markingfeedback', $portalurl('assignments'), 'check-circle', false);
+                }
+                $addsection($teaching, get_string('assignmentssection', 'theme_echealth'), 'assignments', 'clipboard', $children);
+            }
+            if ($attcourses || ($issiteadmin && isset($optionalmodules['attendance']))) {
+                $children = [];
+                $this->add_echealth_nav_item($children, 'attendanceregister', $portalurl('attendance'), 'attendance', $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'attendance');
+                if ($issiteadmin) {
+                    $this->add_echealth_nav_item($children, 'sessions', new \moodle_url('/local/echealthnav/index.php', ['view' => 'attendance', 'focus' => 'sessions']), 'calendar',
+                        $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'attendance' && $this->page->url->get_param('focus') === 'sessions');
+                }
+                foreach ($coursemodules as $modules) {
+                    foreach ($modules as $cm) {
+                        if ($cm->modname !== 'attendance' || !has_capability('mod/attendance:manageattendances', \context_module::instance($cm->id))) {
+                            continue;
+                        }
+                        $this->add_echealth_nav_item($children, 'sessions', new \moodle_url('/mod/attendance/sessions.php', ['id' => $cm->id, 'action' => 1]), 'calendar', $path === '/mod/attendance/sessions.php' && (int)$this->page->url->get_param('id') === (int)$cm->id);
+                    }
+                }
+                if ($attcourses || $issiteadmin) {
+                    $this->add_echealth_nav_item($children, 'attendancereports', new \moodle_url('/local/echealthnav/index.php', ['view' => 'reports', 'focus' => 'attendance']), 'reports', false);
+                }
+                $addsection($teaching, get_string('attendance', 'theme_echealth'), 'attendance', 'attendance', $children);
+            }
+
+            $hasreports = $admin;
+            foreach ($enrolledcourses as $course) {
+                if ((int)$course->id === SITEID) {
+                    continue;
+                }
+                $context = \context_course::instance($course->id);
+                if (has_capability('moodle/site:viewreports', $context) || has_capability('report/progress:view', $context) ||
+                        has_capability('report/completion:view', $context)) {
+                    $hasreports = true;
+                    break;
+                }
+            }
+            if ($hasreports) {
+                $children = [];
+                $isreportpage = $path === '/local/echealthnav/index.php' && $this->page->url->get_param('view') === 'reports';
+                $reportfocus = (string)$this->page->url->get_param('focus');
+                $this->add_echealth_nav_item($children, 'learnerreports', new \moodle_url('/local/echealthnav/index.php', ['view' => 'reports', 'focus' => 'learners']), 'users', $isreportpage && in_array($reportfocus, ['', 'learners'], true));
+                $this->add_echealth_nav_item($children, 'examreports', new \moodle_url('/local/echealthnav/index.php', ['view' => 'reports', 'focus' => 'exams']), 'quiz', $isreportpage && $reportfocus === 'exams');
+                $this->add_echealth_nav_item($children, 'attendanceanalyticsreports', new \moodle_url('/local/echealthnav/index.php', ['view' => 'reports', 'focus' => 'attendance']), 'attendance', $isreportpage && $reportfocus === 'attendance');
+                $this->add_echealth_nav_item($children, 'completionreports', new \moodle_url('/local/echealthnav/index.php', ['view' => 'reports', 'focus' => 'completion']), 'check-circle', $isreportpage && $reportfocus === 'completion');
+                if ($issiteadmin && file_exists($CFG->dirroot . '/reportbuilder/index.php')) {
+                    $this->add_echealth_nav_item($children, 'sitereports', new \moodle_url('/reportbuilder/index.php'), 'file-text', str_starts_with($path, '/reportbuilder/'));
+                }
+                $addsection($management, get_string('reportsanalytics', 'theme_echealth'), 'reports', 'reports', $children);
+            }
+            if (isset($optionalmodules['customcert'])) {
+                $children = [];
+                $this->add_echealth_nav_item($children, 'issuedcertificates', new \moodle_url('/mod/customcert/my_certificates.php'), 'certificate', str_starts_with($path, '/mod/customcert/my_certificates.php'));
+                if (has_capability('mod/customcert:manage', $systemcontext)) {
+                    $this->add_echealth_nav_item($children, 'certificatetemplates', new \moodle_url('/mod/customcert/manage_templates.php', ['contextid' => $systemcontext->id]), 'settings', $path === '/mod/customcert/manage_templates.php');
+                }
+                $addsection($management, get_string('certificates', 'theme_echealth'), 'certificates', 'certificate', $children);
+            }
+
+            if (file_exists($CFG->dirroot . '/message/index.php')) {
+                $this->add_echealth_nav_item($primary, 'communication', new \moodle_url('/message/index.php'), 'message', str_starts_with($path, '/message/'));
+            }
+
             $announcement = $this->get_site_announcement_module();
             if ($announcement) {
                 [$cmid, $modcontext] = $announcement;
@@ -154,46 +385,6 @@ class core_renderer extends \theme_boost\output\core_renderer {
                 }
             }
 
-            if (file_exists($CFG->dirroot . '/admin/user.php') && (
-                has_capability('moodle/user:create', $systemcontext) ||
-                has_capability('moodle/user:update', $systemcontext)
-            )) {
-                $this->add_echealth_nav_item($learners, 'users', new \moodle_url('/admin/user.php'), 'users', $path === '/admin/user.php');
-            }
-            if (file_exists($CFG->dirroot . '/course/management.php') && $this->echealth_can_manage_courses()) {
-                $this->add_echealth_nav_item($learners, 'coursesadmin', new \moodle_url('/course/management.php'), 'book', $path === '/course/management.php');
-            }
-            if (file_exists($CFG->dirroot . '/cohort/index.php') &&
-                    has_capability('moodle/cohort:manage', $systemcontext)) {
-                $this->add_echealth_nav_item($learners, 'cohorts', new \moodle_url('/cohort/index.php'), 'campus', $path === '/cohort/index.php');
-            }
-            if (file_exists($CFG->dirroot . '/admin/tool/lp/competencies.php') &&
-                    has_capability('tool/lp:competencymanage', $systemcontext)) {
-                $this->add_echealth_nav_item(
-                    $learners,
-                    'competencies',
-                    new \moodle_url('/admin/tool/lp/competencies.php'),
-                    'competency',
-                    str_starts_with($path, '/admin/tool/lp/')
-                );
-            }
-            if (file_exists($CFG->dirroot . '/reportbuilder/index.php') &&
-                    has_capability('moodle/site:config', $systemcontext)) {
-                $this->add_echealth_nav_item($management, 'reports', new \moodle_url('/reportbuilder/index.php'), 'reports', str_starts_with($path, '/reportbuilder/'));
-            } else if (file_exists($CFG->dirroot . '/report/log/index.php')) {
-                foreach (array_slice($enrolledcourses, 0, 6) as $course) {
-                    if (has_capability('moodle/site:viewreports', \context_course::instance($course->id))) {
-                        $this->add_echealth_nav_item(
-                            $management,
-                            'reports',
-                            new \moodle_url('/report/log/index.php', ['id' => $course->id]),
-                            'reports',
-                            $path === '/report/log/index.php' && (int)$this->page->url->get_param('id') === (int)$course->id
-                        );
-                        break;
-                    }
-                }
-            }
             // Course activities in Moodle require a course context. Build the submenu
             // from courses this user can access instead of inventing global destinations.
             $courseitems = [];
@@ -281,8 +472,7 @@ class core_renderer extends \theme_boost\output\core_renderer {
 
             if (file_exists($CFG->dirroot . '/' . $CFG->admin . '/index.php') && has_capability('moodle/site:config', $systemcontext)) {
                 $adminurl = new \moodle_url('/' . $CFG->admin . '/index.php');
-                $adminchildren = [];
-                $this->add_echealth_nav_item($adminchildren, 'siteadministration', $adminurl, 'settings',
+                $this->add_echealth_nav_item($system, 'siteadministration', $adminurl, 'settings',
                     str_starts_with($path, '/' . $CFG->admin . '/'));
                 foreach ([
                     ['roles', '/admin/roles/manage.php', 'users'],
@@ -291,21 +481,17 @@ class core_renderer extends \theme_boost\output\core_renderer {
                     ['scheduledtasks', '/admin/tool/task/scheduledtasks.php', 'clock'],
                 ] as [$label, $route, $icon]) {
                     if (file_exists($CFG->dirroot . $route)) {
-                        $this->add_echealth_nav_item($adminchildren, $label, new \moodle_url($route), $icon, $path === $route);
+                        $this->add_echealth_nav_item($system, $label, new \moodle_url($route), $icon, $path === $route);
                     }
                 }
                 if (!empty($CFG->enablebadges) && file_exists($CFG->dirroot . '/badges/index.php')) {
                     require_once($CFG->libdir . '/badgeslib.php');
                     if (badges_can_manage_badges($systemcontext)) {
-                        $this->add_echealth_nav_item($adminchildren, 'managebadges',
+                        $this->add_echealth_nav_item($system, 'managebadges',
                             new \moodle_url('/badges/index.php', ['type' => BADGE_TYPE_SITE]), 'award',
                             $path === '/badges/index.php');
                     }
                 }
-                $system[] = ['label' => get_string('siteadministration', 'theme_echealth'), 'url' => $adminurl->out(false),
-                    'icon' => $this->image_url('icons/settings', 'theme_echealth')->out(false),
-                    'active' => str_starts_with($path, '/' . $CFG->admin . '/') || str_starts_with($path, '/admin/'),
-                    'children' => $adminchildren];
             }
         }
 
@@ -323,9 +509,14 @@ class core_renderer extends \theme_boost\output\core_renderer {
         if ($teaching) {
             $html .= $this->render_echealth_nav_group('teachingassessments', $teaching, true);
         }
-        $administration = array_merge($learners, $management, $system);
-        if ($administration) {
-            $html .= $this->render_echealth_nav_group('administration', $administration, true);
+        if ($learners) {
+            $html .= $this->render_echealth_nav_group('learnermanagement', $learners, true);
+        }
+        if ($management) {
+            $html .= $this->render_echealth_nav_group('managementreports', $management, true);
+        }
+        if ($system) {
+            $html .= $this->render_echealth_nav_group('administration', $system, true);
         }
         if ($support) {
             $html .= $this->render_echealth_nav_group('support', $support);
